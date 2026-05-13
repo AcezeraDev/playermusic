@@ -16,6 +16,7 @@ import android.media.MediaMetadata;
 import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.media.audiofx.Equalizer;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
@@ -45,6 +46,7 @@ public class MusicPlaybackService extends Service {
     private MediaSession mediaSession;
     private AudioManager audioManager;
     private AudioFocusRequest focusRequest;
+    private Equalizer equalizer;
     private int currentIndex = -1;
     private int repeatMode = 0;
     private boolean shuffleEnabled = false;
@@ -321,6 +323,45 @@ public class MusicPlaybackService extends Service {
         }
     }
 
+    public int getAudioSessionId() {
+        return player == null ? 0 : player.getAudioSessionId();
+    }
+
+    public boolean hasEqualizer() {
+        return equalizer != null;
+    }
+
+    public short getEqualizerBandCount() {
+        return equalizer == null ? 0 : equalizer.getNumberOfBands();
+    }
+
+    public short[] getEqualizerBandLevelRange() {
+        return equalizer == null ? new short[] { 0, 0 } : equalizer.getBandLevelRange();
+    }
+
+    public short getEqualizerBandLevel(short band) {
+        if (equalizer == null) {
+            return 0;
+        }
+        return equalizer.getBandLevel(band);
+    }
+
+    public int getEqualizerCenterFreq(short band) {
+        if (equalizer == null) {
+            return 0;
+        }
+        return equalizer.getCenterFreq(band);
+    }
+
+    public void setEqualizerBandLevel(short band, short level) {
+        if (equalizer == null) {
+            return;
+        }
+        short[] range = equalizer.getBandLevelRange();
+        short clamped = (short) Math.max(range[0], Math.min(range[1], level));
+        equalizer.setBandLevel(band, clamped);
+    }
+
     public void setShuffleEnabled(boolean enabled) {
         shuffleEnabled = enabled;
         notifyPlaybackChanged();
@@ -356,6 +397,7 @@ public class MusicPlaybackService extends Service {
         player = new MediaPlayer();
         player.setAudioAttributes(playbackAttributes());
         player.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+        setupEqualizer();
         player.setOnPreparedListener(mediaPlayer -> {
             prepared = true;
             updateMediaMetadata();
@@ -420,6 +462,7 @@ public class MusicPlaybackService extends Service {
     }
 
     private void releasePlayer() {
+        releaseEqualizer();
         if (player != null) {
             try {
                 player.reset();
@@ -429,6 +472,29 @@ public class MusicPlaybackService extends Service {
             player = null;
         }
         prepared = false;
+    }
+
+    private void setupEqualizer() {
+        releaseEqualizer();
+        if (player == null || player.getAudioSessionId() == 0) {
+            return;
+        }
+        try {
+            equalizer = new Equalizer(0, player.getAudioSessionId());
+            equalizer.setEnabled(true);
+        } catch (RuntimeException error) {
+            equalizer = null;
+        }
+    }
+
+    private void releaseEqualizer() {
+        if (equalizer != null) {
+            try {
+                equalizer.release();
+            } catch (RuntimeException ignored) {
+            }
+            equalizer = null;
+        }
     }
 
     private AudioAttributes playbackAttributes() {

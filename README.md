@@ -10,15 +10,18 @@ PlayerMusic e um player Android nativo para tocar musicas ja baixadas no aparelh
 - Fila de reproducao, tocar a seguir, aleatorio e repeticao.
 - Playback em segundo plano com foreground service.
 - Notificacao com controles de anterior, tocar/pausar e proxima.
-- Interface escura, responsiva e feita sem dependencias externas.
-- Player redesenhado com capa/placeholder, resumo da biblioteca e destaque da musica atual.
+- Interface com modo claro e escuro, responsiva e feita sem dependencias externas.
+- Player redesenhado com capa grande, mini player inferior, resumo da biblioteca e destaque da musica atual.
+- Animacoes suaves nos botoes, na abertura do player e na troca de musica.
 - Listas com cartoes mais espacados e estado visual para a faixa em reproducao.
-- Aba de extensoes para abrir o Snaptube ou outro app externo cadastrado.
+- Aba de extensoes redesenhada para downloads offline, equalizador, historico e apps externos.
 - Atualizacao da biblioteca local apos novos downloads aparecerem no aparelho.
 - Icone original renovado com visual de player moderno.
 - Download por link direto de audio autorizado, salvando em Music/PlayerMusic.
 - Links do YouTube abrem no app oficial, sem download automatico.
 - Mini-player expansivel para tela cheia ao tocar ou puxar para cima.
+- Equalizador por faixa quando o aparelho oferece suporte ao audio effect do Android.
+- Letras salvas por musica, historico de faixas tocadas e tela de artista/album.
 
 ## APK
 
@@ -30,7 +33,7 @@ Versao atual: `1.3.0`
 
 SHA-256 do APK enviado neste repositorio:
 
-`0083DE0E1C749F12B5A8322F6759942D6CADA8FDDBE11289EE85C66B5691FB73`
+`B9B6A688CCBE473F9D7E894BCC118EB56446BBE776256841D0CF704489204EFE`
 
 ## Build local
 
