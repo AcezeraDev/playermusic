@@ -18,6 +18,10 @@ Depois do build, o APK fica em:
 
 `release/PlayerMusic.apk`
 
+Download direto pela GitHub Release:
+
+https://github.com/AcezeraDev/playermusic/releases/download/v1.0.0/PlayerMusic.apk
+
 SHA-256 do APK enviado neste repositorio:
 
 `11EC77C5755F9813A3CD13EE94E522EAF5C1F3F8B29CF0D22D88E5A181D4C7B5`
