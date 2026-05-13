@@ -1020,24 +1020,26 @@ public class MainActivity extends Activity {
         input.setHint("https://site.com/musica.mp3");
         input.setTextColor(TEXT);
         input.setHintTextColor(MUTED);
-        input.setPadding(dp(16), dp(8), dp(16), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Baixar audio por link")
-                .setMessage("Cole um link direto de audio. Links do YouTube serao abertos no app oficial, sem download.")
-                .setView(input)
-                .setPositiveButton("Baixar", null)
-                .setNegativeButton("Cancelar", null)
-                .create();
-        dialog.setOnShowListener(view -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
-            String link = input.getText().toString().trim();
-            if (link.isEmpty()) {
-                input.setError("Cole um link");
-                return;
-            }
-            dialog.dismiss();
-            importAudioLink(link);
-        }));
-        dialog.show();
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+        input.setBackground(rounded(SURFACE_ALT, dp(14), 1, BORDER));
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Offline", "Cole um link direto de audio. Links do YouTube serao abertos no app oficial, sem download.", ACCENT));
+        body.addView(input, spacedParams(-1, dp(96), 12));
+        showStyledDialog(
+                "Baixar audio",
+                "Importacao offline",
+                body,
+                new DialogAction("Cancelar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Baixar", ACCENT, true, dialog -> {
+                    String link = input.getText().toString().trim();
+                    if (link.isEmpty()) {
+                        input.setError("Cole um link");
+                        return;
+                    }
+                    dialog.dismiss();
+                    importAudioLink(link);
+                })
+        );
     }
 
     private void importAudioLink(String link) {
@@ -1088,11 +1090,14 @@ public class MainActivity extends Activity {
     }
 
     private void showDownloadError(String message) {
-        new AlertDialog.Builder(this)
-                .setTitle("Download nao iniciado")
-                .setMessage(message == null || message.isEmpty() ? "Use um link direto de audio, como mp3, m4a, wav, ogg ou flac." : message)
-                .setPositiveButton("Entendi", null)
-                .show();
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Link nao suportado", message == null || message.isEmpty() ? "Use um link direto de audio, como mp3, m4a, wav, ogg ou flac." : message, ROSE));
+        showStyledDialog(
+                "Download nao iniciado",
+                "Nao deu para salvar este arquivo",
+                body,
+                new DialogAction("Entendi", ACCENT, true, AlertDialog::dismiss)
+        );
     }
 
     private String downloadAudioFile(String link) throws Exception {
@@ -1349,40 +1354,44 @@ public class MainActivity extends Activity {
         input.setSelectAllOnFocus(true);
         input.setTextColor(TEXT);
         input.setHintTextColor(MUTED);
-        input.setPadding(dp(16), dp(8), dp(16), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Cadastrar extensao")
-                .setView(input)
-                .setPositiveButton("Salvar", null)
-                .setNegativeButton("Cancelar", null)
-                .setNeutralButton("Limpar", null)
-                .create();
-        dialog.setOnShowListener(view -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
-                String packageName = input.getText().toString().trim();
-                if (packageName.isEmpty()) {
-                    input.setError("Digite o pacote Android");
-                    return;
-                }
-                extensionPrefs.edit().putString(KEY_CUSTOM_EXTENSION_PACKAGE, packageName).apply();
-                dialog.dismiss();
-                showExtensions();
-            });
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button -> {
-                extensionPrefs.edit().remove(KEY_CUSTOM_EXTENSION_PACKAGE).apply();
-                dialog.dismiss();
-                showExtensions();
-            });
-        });
-        dialog.show();
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+        input.setBackground(rounded(SURFACE_ALT, dp(14), 1, BORDER));
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Pacote Android", "Cadastre o nome do pacote de uma extensao instalada para abrir direto pelo PlayerMusic.", BLUE));
+        body.addView(input, spacedParams(-1, dp(54), 12));
+        showStyledDialog(
+                "Cadastrar extensao",
+                "Integre outro app instalado",
+                body,
+                new DialogAction("Limpar", ROSE, false, dialog -> {
+                    extensionPrefs.edit().remove(KEY_CUSTOM_EXTENSION_PACKAGE).apply();
+                    dialog.dismiss();
+                    showExtensions();
+                }),
+                new DialogAction("Cancelar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Salvar", ACCENT, true, dialog -> {
+                    String packageName = input.getText().toString().trim();
+                    if (packageName.isEmpty()) {
+                        input.setError("Digite o pacote Android");
+                        return;
+                    }
+                    extensionPrefs.edit().putString(KEY_CUSTOM_EXTENSION_PACKAGE, packageName).apply();
+                    dialog.dismiss();
+                    showExtensions();
+                })
+        );
     }
 
     private void showExtensionSafetyDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("Uso responsavel")
-                .setMessage("Use extensoes externas apenas para baixar ou importar audio que voce tem direito de usar. O PlayerMusic atualiza e toca os arquivos locais encontrados no aparelho.")
-                .setPositiveButton("Entendi", null)
-                .show();
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Biblioteca local", "Use extensoes externas apenas para baixar ou importar audio que voce tem direito de usar.", WARM));
+        body.addView(infoCard("Atualizacao", "O PlayerMusic atualiza e toca os arquivos locais encontrados no aparelho.", ACCENT), spacedParams(-1, -2, 10));
+        showStyledDialog(
+                "Uso responsavel",
+                "Downloads e extensoes",
+                body,
+                new DialogAction("Entendi", ACCENT, true, AlertDialog::dismiss)
+        );
     }
 
     private void showEqualizerDialog() {
@@ -1404,23 +1413,33 @@ public class MainActivity extends Activity {
             return;
         }
 
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(8), dp(18), dp(8));
-
-        TextView info = text("Ajuste a faixa atual em tempo real.", 13, MUTED, Typeface.NORMAL);
-        panel.addView(info, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout panel = dialogBody();
+        Track current = playbackService.getCurrentTrack();
+        if (current != null) {
+            panel.addView(infoCard("Faixa atual", current.title + "\n" + current.artist, ACCENT));
+        }
 
         for (short band = 0; band < bandCount; band++) {
             final short currentBand = band;
             LinearLayout bandPanel = new LinearLayout(this);
             bandPanel.setOrientation(LinearLayout.VERTICAL);
-            bandPanel.setPadding(0, dp(12), 0, 0);
-            panel.addView(bandPanel, new LinearLayout.LayoutParams(-1, -2));
+            bandPanel.setPadding(dp(14), dp(12), dp(14), dp(10));
+            bandPanel.setBackground(rounded(alphaBlend(SURFACE, ACCENT, darkMode ? 9 : 5), dp(14), 1, BORDER));
+            panel.addView(bandPanel, spacedParams(-1, -2, 10));
 
             short level = playbackService.getEqualizerBandLevel(currentBand);
-            TextView label = text(formatBandFrequency(playbackService.getEqualizerCenterFreq(currentBand)) + "  " + formatDb(level), 13, TEXT, Typeface.BOLD);
-            bandPanel.addView(label, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout labelRow = new LinearLayout(this);
+            labelRow.setGravity(Gravity.CENTER_VERTICAL);
+            bandPanel.addView(labelRow, new LinearLayout.LayoutParams(-1, -2));
+
+            TextView frequency = text(formatBandFrequency(playbackService.getEqualizerCenterFreq(currentBand)), 13, TEXT, Typeface.BOLD);
+            labelRow.addView(frequency, new LinearLayout.LayoutParams(0, -2, 1f));
+
+            TextView label = text(formatDb(level), 12, ACCENT, Typeface.BOLD);
+            label.setGravity(Gravity.CENTER);
+            label.setPadding(dp(10), 0, dp(10), 0);
+            label.setBackground(rounded(alphaColor(ACCENT, darkMode ? 34 : 22), dp(14), 1, alphaColor(ACCENT, darkMode ? 82 : 68)));
+            labelRow.addView(label, new LinearLayout.LayoutParams(-2, dp(28)));
 
             SeekBar bandSeek = new SeekBar(this);
             bandSeek.setMax(range[1] - range[0]);
@@ -1432,7 +1451,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                     short newLevel = (short) (range[0] + progress);
-                    label.setText(formatBandFrequency(playbackService.getEqualizerCenterFreq(currentBand)) + "  " + formatDb(newLevel));
+                    label.setText(formatDb(newLevel));
                     if (fromUser) {
                         playbackService.setEqualizerBandLevel(currentBand, newLevel);
                     }
@@ -1450,13 +1469,20 @@ public class MainActivity extends Activity {
         }
 
         ScrollView scrollView = new ScrollView(this);
+        scrollView.setClipToPadding(false);
         scrollView.addView(panel);
-        new AlertDialog.Builder(this)
-                .setTitle("Equalizador")
-                .setView(scrollView)
-                .setNeutralButton("Zerar", (dialog, which) -> resetEqualizer())
-                .setPositiveButton("Pronto", null)
-                .show();
+        scrollView.setLayoutParams(new LinearLayout.LayoutParams(-1, dialogScrollHeight(92 + bandCount * 86, 460)));
+        showStyledDialog(
+                "Equalizador",
+                "Graves, medios e agudos",
+                scrollView,
+                new DialogAction("Zerar", WARM, false, dialog -> {
+                    resetEqualizer();
+                    dialog.dismiss();
+                    showEqualizerDialog();
+                }),
+                new DialogAction("Pronto", ACCENT, true, AlertDialog::dismiss)
+        );
     }
 
     private boolean openSystemEqualizer() {
@@ -1499,22 +1525,23 @@ public class MainActivity extends Activity {
         input.setHintTextColor(MUTED);
         input.setPadding(dp(16), dp(12), dp(16), dp(12));
         input.setBackground(rounded(SURFACE_ALT, dp(12), 1, BORDER));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Letras")
-                .setMessage(track.title + "\n" + track.artist)
-                .setView(input)
-                .setPositiveButton("Salvar", null)
-                .setNeutralButton("Buscar", (d, which) -> openExternalUrl("https://www.google.com/search?q=" + Uri.encode(track.artist + " " + track.title + " letra")))
-                .setNegativeButton("Fechar", null)
-                .create();
-        dialog.setOnShowListener(view -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
-            if (uiPrefs != null) {
-                uiPrefs.edit().putString(lyricsKey(track), input.getText().toString()).apply();
-            }
-            toast("Letra salva");
-            dialog.dismiss();
-        }));
-        dialog.show();
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Musica", track.title + "\n" + track.artist, BLUE));
+        body.addView(input, spacedParams(-1, dp(220), 12));
+        showStyledDialog(
+                "Letras",
+                "Texto salvo por musica",
+                body,
+                new DialogAction("Buscar", BLUE, false, dialog -> openExternalUrl("https://www.google.com/search?q=" + Uri.encode(track.artist + " " + track.title + " letra"))),
+                new DialogAction("Fechar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Salvar", ACCENT, true, dialog -> {
+                    if (uiPrefs != null) {
+                        uiPrefs.edit().putString(lyricsKey(track), input.getText().toString()).apply();
+                    }
+                    toast("Letra salva");
+                    dialog.dismiss();
+                })
+        );
     }
 
     private void showArtistAlbumDialog(Track track) {
@@ -1524,52 +1551,361 @@ public class MainActivity extends Activity {
         }
         ArrayList<Track> artistTracks = tracksByArtist(track.artist);
         ArrayList<Track> albumTracks = tracksByAlbum(track.album, track.artist);
-        String message = "Artista: " + track.artist
-                + "\nAlbum: " + track.album
-                + "\n\n" + countLabel(artistTracks.size(), "musica do artista", "musicas do artista")
-                + "\n" + countLabel(albumTracks.size(), "musica no album", "musicas no album");
-        new AlertDialog.Builder(this)
-                .setTitle("Artista e album")
-                .setMessage(message)
-                .setPositiveButton("Tocar album", (dialog, which) -> {
+        LinearLayout body = dialogBody();
+        body.addView(artistAlbumHeader(track));
+        LinearLayout stats = new LinearLayout(this);
+        stats.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams artistStatParams = new LinearLayout.LayoutParams(0, dp(74), 1f);
+        artistStatParams.setMargins(0, 0, dp(5), 0);
+        LinearLayout.LayoutParams albumStatParams = new LinearLayout.LayoutParams(0, dp(74), 1f);
+        albumStatParams.setMargins(dp(5), 0, 0, 0);
+        stats.addView(statBlock(countLabel(artistTracks.size(), "musica", "musicas"), "do artista", BLUE), artistStatParams);
+        stats.addView(statBlock(countLabel(albumTracks.size(), "musica", "musicas"), "no album", WARM), albumStatParams);
+        body.addView(stats, spacedParams(-1, dp(74), 12));
+        body.addView(infoCard("Album", track.album, WARM), spacedParams(-1, -2, 10));
+        showStyledDialog(
+                "Artista e album",
+                "Explore a biblioteca",
+                body,
+                new DialogAction("Fechar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Tocar artista", BLUE, false, dialog -> {
+                    dialog.dismiss();
+                    if (!artistTracks.isEmpty()) {
+                        playFrom(artistTracks, 0);
+                    }
+                }),
+                new DialogAction("Tocar album", ACCENT, true, dialog -> {
+                    dialog.dismiss();
                     if (!albumTracks.isEmpty()) {
                         playFrom(albumTracks, 0);
                     }
                 })
-                .setNeutralButton("Tocar artista", (dialog, which) -> {
-                    if (!artistTracks.isEmpty()) {
-                        playFrom(artistTracks, 0);
-                    }
-                })
-                .setNegativeButton("Fechar", null)
-                .show();
+        );
     }
 
     private void showHistoryDialog() {
         ArrayList<Track> history = historyTracks();
         if (history.isEmpty()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Historico")
-                    .setMessage("As musicas tocadas vao aparecer aqui.")
-                    .setPositiveButton("Entendi", null)
-                    .show();
+            LinearLayout body = dialogBody();
+            body.addView(infoCard("Nada tocado ainda", "As musicas tocadas vao aparecer aqui com acesso rapido para repetir.", ROSE));
+            showStyledDialog(
+                    "Historico",
+                    "Ultimas reproducoes",
+                    body,
+                    new DialogAction("Entendi", ACCENT, true, AlertDialog::dismiss)
+            );
             return;
         }
-        String[] labels = new String[history.size()];
+        LinearLayout list = dialogBody();
+        final AlertDialog[] holder = new AlertDialog[1];
         for (int i = 0; i < history.size(); i++) {
-            labels[i] = trackLine(history.get(i));
+            final int index = i;
+            list.addView(historyRow(history.get(i), index, view -> {
+                if (holder[0] != null) {
+                    holder[0].dismiss();
+                }
+                playFrom(history, index);
+            }), spacedParams(-1, dp(68), i == 0 ? 0 : 8));
         }
-        new AlertDialog.Builder(this)
-                .setTitle("Historico")
-                .setItems(labels, (dialog, which) -> playFrom(history, which))
-                .setNeutralButton("Limpar", (dialog, which) -> {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setClipToPadding(false);
+        scrollView.addView(list);
+        scrollView.setLayoutParams(new LinearLayout.LayoutParams(-1, dialogScrollHeight(68 * history.size(), 380)));
+        holder[0] = showStyledDialog(
+                "Historico",
+                "Ultimas reproducoes",
+                scrollView,
+                new DialogAction("Limpar", ROSE, false, dialog -> {
                     if (uiPrefs != null) {
                         uiPrefs.edit().remove(KEY_HISTORY).apply();
                     }
                     toast("Historico limpo");
-                })
-                .setPositiveButton("Fechar", null)
-                .show();
+                    dialog.dismiss();
+                }),
+                new DialogAction("Fechar", ACCENT, true, AlertDialog::dismiss)
+        );
+    }
+
+    private AlertDialog showStyledDialog(String title, String subtitle, View body, DialogAction... actions) {
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        dialog.setCanceledOnTouchOutside(true);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(dialogBackground());
+
+        View strip = new View(this);
+        strip.setBackground(dialogAccentStrip());
+        card.addView(strip, new LinearLayout.LayoutParams(-1, dp(5)));
+
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        inner.setPadding(dp(20), dp(18), dp(20), dp(16));
+        card.addView(inner, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView titleView = text(title, 21, TEXT, Typeface.BOLD);
+        titleView.setSingleLine(true);
+        titleView.setEllipsize(TextUtils.TruncateAt.END);
+        inner.addView(titleView, new LinearLayout.LayoutParams(-1, -2));
+
+        if (subtitle != null && !subtitle.trim().isEmpty()) {
+            TextView subtitleView = text(subtitle, 13, MUTED, Typeface.NORMAL);
+            subtitleView.setSingleLine(true);
+            subtitleView.setEllipsize(TextUtils.TruncateAt.END);
+            inner.addView(subtitleView, new LinearLayout.LayoutParams(-1, -2));
+        }
+
+        if (body != null) {
+            LinearLayout.LayoutParams bodyParams = spacedParams(-1, -2, 16);
+            ViewGroup.LayoutParams requestedParams = body.getLayoutParams();
+            if (requestedParams != null && requestedParams.height > 0) {
+                bodyParams.height = requestedParams.height;
+            }
+            inner.addView(body, bodyParams);
+        }
+
+        LinearLayout buttonRow = new LinearLayout(this);
+        buttonRow.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        buttonRow.setBaselineAligned(false);
+        inner.addView(buttonRow, spacedParams(-1, dp(44), 16));
+        if (actions != null) {
+            for (DialogAction action : actions) {
+                buttonRow.addView(dialogButton(dialog, action), dialogButtonParams());
+            }
+        }
+
+        dialog.setView(card, 0, 0, 0, 0);
+        dialog.setOnShowListener(view -> {
+            android.view.Window window = dialog.getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                window.setDimAmount(darkMode ? 0.76f : 0.42f);
+                int width = Math.min(getResources().getDisplayMetrics().widthPixels - dp(28), dp(430));
+                window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+            animateDialogPanel(card);
+        });
+        dialog.show();
+        return dialog;
+    }
+
+    private TextView dialogButton(AlertDialog dialog, DialogAction action) {
+        TextView button = text(action.label, 12, action.primary ? ON_ACCENT : action.tint, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setMinWidth(dp(70));
+        button.setPadding(dp(12), 0, dp(12), 0);
+        int fill = action.primary ? action.tint : alphaColor(action.tint, darkMode ? 30 : 18);
+        int stroke = action.primary ? action.tint : alphaColor(action.tint, darkMode ? 92 : 70);
+        button.setBackground(rounded(fill, dp(17), action.primary ? 0 : 1, stroke));
+        button.setClickable(true);
+        attachPressAnimation(button);
+        button.setOnClickListener(view -> {
+            if (action.callback == null) {
+                dialog.dismiss();
+            } else {
+                action.callback.onClick(dialog);
+            }
+        });
+        return button;
+    }
+
+    private LinearLayout dialogBody() {
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        return body;
+    }
+
+    private LinearLayout infoCard(String label, String message, int tint) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setBackground(rounded(alphaBlend(SURFACE, tint, darkMode ? 10 : 5), dp(14), 1, alphaColor(tint, darkMode ? 76 : 56)));
+
+        TextView labelView = text(label, 12, tint, Typeface.BOLD);
+        labelView.setSingleLine(true);
+        labelView.setEllipsize(TextUtils.TruncateAt.END);
+        card.addView(labelView, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView messageView = text(message, 13, TEXT, Typeface.NORMAL);
+        messageView.setMaxLines(4);
+        messageView.setEllipsize(TextUtils.TruncateAt.END);
+        card.addView(messageView, new LinearLayout.LayoutParams(-1, -2));
+        return card;
+    }
+
+    private LinearLayout historyRow(Track track, int index, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(8), dp(12), dp(8));
+        row.setBackground(rounded(alphaBlend(SURFACE, index == 0 ? ACCENT : BLUE, darkMode ? 10 : 5), dp(14), 1, index == 0 ? alphaColor(ACCENT, 100) : BORDER));
+        row.setClickable(true);
+        row.setOnClickListener(listener);
+        attachPressAnimation(row);
+
+        TextView badge = text(index == 0 ? "1" : trackInitial(track), 16, BADGE_TEXT, Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(albumBadge(track.albumId));
+        row.addView(badge, new LinearLayout.LayoutParams(dp(46), dp(46)));
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setPadding(dp(12), 0, dp(8), 0);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView title = text(track.title, 15, TEXT, Typeface.BOLD);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(title, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView subtitle = text(track.artist + " - " + track.album, 12, MUTED, Typeface.NORMAL);
+        subtitle.setSingleLine(true);
+        subtitle.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView duration = text(track.formattedDuration(), 12, index == 0 ? ACCENT : MUTED, Typeface.BOLD);
+        row.addView(duration, new LinearLayout.LayoutParams(-2, -2));
+        return row;
+    }
+
+    private LinearLayout playlistChoiceRow(Playlist playlist, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(8), dp(12), dp(8));
+        row.setBackground(rounded(alphaBlend(SURFACE, WARM, darkMode ? 9 : 5), dp(14), 1, BORDER));
+        row.setClickable(true);
+        row.setOnClickListener(listener);
+        attachPressAnimation(row);
+
+        TextView badge = text("", 16, BADGE_TEXT, Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        badge.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_playlist, 0, 0, 0);
+        badge.setBackground(rounded(WARM, dp(14), 0, 0));
+        row.addView(badge, new LinearLayout.LayoutParams(dp(46), dp(46)));
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setPadding(dp(12), 0, 0, 0);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView title = text(playlist.name, 15, TEXT, Typeface.BOLD);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        labels.addView(text(countLabel(playlist.trackUris.size(), "musica", "musicas"), 12, MUTED, Typeface.NORMAL), new LinearLayout.LayoutParams(-1, -2));
+        return row;
+    }
+
+    private LinearLayout artistAlbumHeader(Track track) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setBackground(rounded(alphaBlend(SURFACE, BLUE, darkMode ? 10 : 5), dp(16), 1, alphaColor(BLUE, darkMode ? 82 : 64)));
+
+        TextView badge = text(trackInitial(track), 24, BADGE_TEXT, Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(albumBadge(track.albumId));
+        row.addView(badge, new LinearLayout.LayoutParams(dp(68), dp(68)));
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setPadding(dp(14), 0, 0, 0);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView artist = text(track.artist, 18, TEXT, Typeface.BOLD);
+        artist.setSingleLine(true);
+        artist.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(artist, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView title = text(track.title, 13, MUTED, Typeface.NORMAL);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        return row;
+    }
+
+    private LinearLayout statBlock(String value, String label, int tint) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setGravity(Gravity.CENTER);
+        block.setPadding(dp(8), 0, dp(8), 0);
+        block.setBackground(rounded(alphaBlend(SURFACE, tint, darkMode ? 12 : 6), dp(14), 1, alphaColor(tint, darkMode ? 84 : 60)));
+        TextView valueView = text(value, 15, TEXT, Typeface.BOLD);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setSingleLine(true);
+        valueView.setEllipsize(TextUtils.TruncateAt.END);
+        block.addView(valueView, new LinearLayout.LayoutParams(-1, -2));
+        TextView labelView = text(label, 12, tint, Typeface.BOLD);
+        labelView.setGravity(Gravity.CENTER);
+        block.addView(labelView, new LinearLayout.LayoutParams(-1, -2));
+        return block;
+    }
+
+    private LinearLayout.LayoutParams dialogButtonParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(36));
+        params.setMargins(dp(5), 0, 0, 0);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams spacedParams(int width, int height, int topMarginDp) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, height);
+        params.setMargins(0, dp(topMarginDp), 0, 0);
+        return params;
+    }
+
+    private int dialogScrollHeight(int desiredDp, int maxDp) {
+        int screenLimit = Math.max(dp(180), getResources().getDisplayMetrics().heightPixels - dp(250));
+        return Math.min(Math.min(dp(desiredDp), dp(maxDp)), screenLimit);
+    }
+
+    private void animateDialogPanel(View view) {
+        view.setAlpha(0f);
+        view.setTranslationY(dp(24));
+        view.setScaleX(0.96f);
+        view.setScaleY(0.96f);
+        view.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+    }
+
+    private GradientDrawable dialogBackground() {
+        int[] colors = darkMode
+                ? new int[] { 0xFF2A2F35, 0xFF35363C }
+                : new int[] { 0xFFFFFFFF, 0xFFF1F5FA };
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        drawable.setCornerRadius(dp(22));
+        drawable.setStroke(dp(1), BORDER);
+        return drawable;
+    }
+
+    private GradientDrawable dialogAccentStrip() {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] { ACCENT, BLUE, WARM });
+        drawable.setCornerRadii(new float[] { dp(22), dp(22), dp(22), dp(22), 0, 0, 0, 0 });
+        return drawable;
+    }
+
+    private interface DialogCallback {
+        void onClick(AlertDialog dialog);
+    }
+
+    private static class DialogAction {
+        final String label;
+        final int tint;
+        final boolean primary;
+        final DialogCallback callback;
+
+        DialogAction(String label, int tint, boolean primary, DialogCallback callback) {
+            this.label = label;
+            this.tint = tint;
+            this.primary = primary;
+            this.callback = callback;
+        }
     }
 
     private String customExtensionPackage() {
@@ -1791,19 +2127,33 @@ public class MainActivity extends Activity {
 
     private void showAddToPlaylistDialog(Track track) {
         ArrayList<Playlist> playlists = playlistStore.getPlaylists();
-        String[] names = new String[playlists.size()];
-        for (int i = 0; i < playlists.size(); i++) {
-            names[i] = playlists.get(i).name;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Adicionar a playlist")
-                .setItems(names, (dialog, which) -> {
-                    playlistStore.addTrack(playlists.get(which).id, track);
+        LinearLayout list = dialogBody();
+        final AlertDialog[] holder = new AlertDialog[1];
+        if (playlists.isEmpty()) {
+            list.addView(infoCard("Nenhuma playlist", "Crie uma playlist para salvar esta musica.", WARM));
+        } else {
+            for (int i = 0; i < playlists.size(); i++) {
+                Playlist playlist = playlists.get(i);
+                list.addView(playlistChoiceRow(playlist, view -> {
+                    if (holder[0] != null) {
+                        holder[0].dismiss();
+                    }
+                    playlistStore.addTrack(playlist.id, track);
                     toast("Musica adicionada");
                     refreshCurrentView();
+                }), spacedParams(-1, dp(66), i == 0 ? 0 : 8));
+            }
+        }
+        holder[0] = showStyledDialog(
+                "Adicionar a playlist",
+                track.title,
+                list,
+                new DialogAction("Fechar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Nova", ACCENT, true, dialog -> {
+                    dialog.dismiss();
+                    showCreatePlaylistDialog(track);
                 })
-                .setNegativeButton("Nova", (dialog, which) -> showCreatePlaylistDialog(track))
-                .show();
+        );
     }
 
     private void showCreatePlaylistDialog(Track trackToAdd) {
@@ -1812,28 +2162,31 @@ public class MainActivity extends Activity {
         input.setHint("Nome da playlist");
         input.setTextColor(TEXT);
         input.setHintTextColor(MUTED);
-        input.setPadding(dp(16), dp(8), dp(16), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Nova playlist")
-                .setView(input)
-                .setPositiveButton("Criar", null)
-                .setNegativeButton("Cancelar", null)
-                .create();
-        dialog.setOnShowListener(view -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
-            String name = input.getText().toString().trim();
-            if (name.isEmpty()) {
-                input.setError("Digite um nome");
-                return;
-            }
-            Playlist playlist = playlistStore.createPlaylist(name);
-            if (trackToAdd != null) {
-                playlistStore.addTrack(playlist.id, trackToAdd);
-            }
-            dialog.dismiss();
-            toast("Playlist criada");
-            showPlaylists();
-        }));
-        dialog.show();
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+        input.setBackground(rounded(SURFACE_ALT, dp(14), 1, BORDER));
+        LinearLayout body = dialogBody();
+        body.addView(infoCard("Organizacao", trackToAdd == null ? "Crie uma playlist para reunir suas musicas favoritas." : "A musica selecionada sera adicionada automaticamente.", WARM));
+        body.addView(input, spacedParams(-1, dp(54), 12));
+        showStyledDialog(
+                "Nova playlist",
+                "Organize sua biblioteca",
+                body,
+                new DialogAction("Cancelar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Criar", ACCENT, true, dialog -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        input.setError("Digite um nome");
+                        return;
+                    }
+                    Playlist playlist = playlistStore.createPlaylist(name);
+                    if (trackToAdd != null) {
+                        playlistStore.addTrack(playlist.id, trackToAdd);
+                    }
+                    dialog.dismiss();
+                    toast("Playlist criada");
+                    showPlaylists();
+                })
+        );
     }
 
     private void showPlaylistOptions(Playlist playlist) {
@@ -1846,15 +2199,19 @@ public class MainActivity extends Activity {
             if (item.getItemId() == 1) {
                 showRenamePlaylistDialog(playlist);
             } else if (item.getItemId() == 2) {
-                new AlertDialog.Builder(this)
-                        .setTitle("Apagar playlist")
-                        .setMessage("A playlist sera removida, mas suas musicas continuam no aparelho.")
-                        .setPositiveButton("Apagar", (dialog, which) -> {
+                LinearLayout body = dialogBody();
+                body.addView(infoCard("Sem apagar musicas", "A playlist sera removida, mas suas musicas continuam no aparelho.", ROSE));
+                showStyledDialog(
+                        "Apagar playlist",
+                        playlist.name,
+                        body,
+                        new DialogAction("Cancelar", MUTED, false, AlertDialog::dismiss),
+                        new DialogAction("Apagar", ROSE, true, dialog -> {
                             playlistStore.deletePlaylist(playlist.id);
+                            dialog.dismiss();
                             showPlaylists();
                         })
-                        .setNegativeButton("Cancelar", null)
-                        .show();
+                );
             }
             return true;
         });
@@ -1866,18 +2223,26 @@ public class MainActivity extends Activity {
         input.setSingleLine(true);
         input.setText(playlist.name);
         input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this)
-                .setTitle("Renomear playlist")
-                .setView(input)
-                .setPositiveButton("Salvar", (dialog, which) -> {
+        input.setTextColor(TEXT);
+        input.setHintTextColor(MUTED);
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+        input.setBackground(rounded(SURFACE_ALT, dp(14), 1, BORDER));
+        LinearLayout body = dialogBody();
+        body.addView(input, new LinearLayout.LayoutParams(-1, dp(54)));
+        showStyledDialog(
+                "Renomear playlist",
+                "Atualize o nome da lista",
+                body,
+                new DialogAction("Cancelar", MUTED, false, AlertDialog::dismiss),
+                new DialogAction("Salvar", ACCENT, true, dialog -> {
                     String name = input.getText().toString().trim();
                     if (!name.isEmpty()) {
                         playlistStore.renamePlaylist(playlist.id, name);
+                        dialog.dismiss();
                         showPlaylists();
                     }
                 })
-                .setNegativeButton("Cancelar", null)
-                .show();
+        );
     }
 
     private ArrayList<Track> resolvePlaylist(Playlist playlist) {
