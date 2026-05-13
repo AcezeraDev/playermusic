@@ -3,6 +3,7 @@ package com.acezeradev.playermusic;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
 import android.content.ContentUris;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -14,17 +15,21 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
@@ -42,6 +47,13 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
@@ -55,6 +67,7 @@ public class MainActivity extends Activity {
     private static final String EXTENSION_PREFS = "player_music_extensions";
     private static final String KEY_CUSTOM_EXTENSION_PACKAGE = "custom_extension_package";
     private static final String SNAPTUBE_PACKAGE = "com.snaptube.premium";
+    private static final int MAX_REDIRECTS = 5;
 
     private static final int BG = 0xFF090B10;
     private static final int SURFACE = 0xFF171A21;
@@ -87,6 +100,16 @@ public class MainActivity extends Activity {
     private TextView nowArtist;
     private TextView nowAlbum;
     private TextView queueInfo;
+    private LinearLayout miniPlayerPanel;
+    private FrameLayout expandedPlayer;
+    private ImageView expandedArtwork;
+    private TextView expandedArtInitial;
+    private TextView expandedTitle;
+    private TextView expandedArtist;
+    private TextView expandedAlbum;
+    private TextView expandedElapsedView;
+    private TextView expandedDurationView;
+    private TextView expandedQueueInfo;
     private TextView elapsedView;
     private TextView durationView;
     private EditText searchInput;
@@ -96,7 +119,11 @@ public class MainActivity extends Activity {
     private ImageButton playButton;
     private ImageButton shuffleButton;
     private ImageButton repeatButton;
+    private ImageButton expandedPlayButton;
+    private ImageButton expandedShuffleButton;
+    private ImageButton expandedRepeatButton;
     private SeekBar seekBar;
+    private SeekBar expandedSeekBar;
     private ListView listView;
 
     private final ArrayList<Track> allTracks = new ArrayList<>();
@@ -108,6 +135,7 @@ public class MainActivity extends Activity {
     private MusicPlaybackService playbackService;
     private boolean bound = false;
     private boolean userSeeking = false;
+    private boolean expandedUserSeeking = false;
     private boolean libraryLoading = false;
     private int currentTab = TAB_LIBRARY;
     private Playlist openPlaylist;
@@ -115,6 +143,8 @@ public class MainActivity extends Activity {
     private int pendingIndex = 0;
     private String lastRenderedTrackUri = "";
     private boolean lastRenderedPlaying = false;
+    private float miniPlayerTouchStartY;
+    private float expandedTouchStartY;
 
     private final MusicPlaybackService.PlaybackListener playbackListener = () -> runOnUiThread(() -> {
         updatePlayer();
@@ -197,12 +227,26 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    public void onBackPressed() {
+        if (expandedPlayer != null && expandedPlayer.getVisibility() == View.VISIBLE) {
+            hideExpandedPlayer();
+            return;
+        }
+        super.onBackPressed();
+    }
+
     private void buildUi() {
+        FrameLayout shell = new FrameLayout(this);
+        shell.setBackgroundColor(BG);
+        shell.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
         root.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
-        setContentView(root);
+        shell.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(shell);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -336,15 +380,28 @@ public class MainActivity extends Activity {
         listView.setEmptyView(emptyView);
 
         buildPlayer(root);
+        buildExpandedPlayer(shell);
         refreshTabs();
         updateLibrarySummary();
     }
 
     private void buildPlayer(LinearLayout root) {
         LinearLayout panel = new LinearLayout(this);
+        miniPlayerPanel = panel;
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(18), dp(16), dp(18), dp(14));
         panel.setBackground(playerBackground());
+        panel.setClickable(true);
+        panel.setOnClickListener(view -> showExpandedPlayer());
+        panel.setOnTouchListener((view, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                miniPlayerTouchStartY = event.getRawY();
+            } else if (event.getAction() == MotionEvent.ACTION_UP && miniPlayerTouchStartY - event.getRawY() > dp(40)) {
+                showExpandedPlayer();
+                return true;
+            }
+            return false;
+        });
         root.addView(panel, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout nowRow = new LinearLayout(this);
@@ -476,6 +533,173 @@ public class MainActivity extends Activity {
             }
             updatePlayer();
         });
+    }
+
+    private void buildExpandedPlayer(FrameLayout shell) {
+        expandedPlayer = new FrameLayout(this);
+        expandedPlayer.setBackgroundColor(BG);
+        expandedPlayer.setVisibility(View.GONE);
+        expandedPlayer.setClickable(true);
+        expandedPlayer.setOnTouchListener((view, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                expandedTouchStartY = event.getRawY();
+            } else if (event.getAction() == MotionEvent.ACTION_UP && event.getRawY() - expandedTouchStartY > dp(60)) {
+                hideExpandedPlayer();
+                return true;
+            }
+            return false;
+        });
+        shell.addView(expandedPlayer, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(18), dp(18), dp(18), dp(18));
+        expandedPlayer.addView(page, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(header, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        ImageButton closeButton = iconButton(R.drawable.ic_arrow_back, "Fechar player", SURFACE_ALT, TEXT, dp(42));
+        closeButton.setRotation(-90f);
+        closeButton.setOnClickListener(view -> hideExpandedPlayer());
+        header.addView(closeButton);
+
+        TextView headerTitle = text("PlayerMusic", 18, TEXT, Typeface.BOLD);
+        headerTitle.setGravity(Gravity.CENTER);
+        header.addView(headerTitle, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        expandedQueueInfo = text("Fila vazia", 12, TEXT, Typeface.BOLD);
+        expandedQueueInfo.setGravity(Gravity.CENTER);
+        expandedQueueInfo.setPadding(dp(10), 0, dp(10), 0);
+        expandedQueueInfo.setBackground(rounded(0x263DDB9A, dp(16), 1, 0x443DDB9A));
+        header.addView(expandedQueueInfo, new LinearLayout.LayoutParams(-2, dp(32)));
+
+        FrameLayout artworkFrame = new FrameLayout(this);
+        artworkFrame.setBackground(expandedArtworkBackground());
+        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(270), dp(270));
+        artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
+        artworkParams.setMargins(0, dp(22), 0, dp(20));
+        page.addView(artworkFrame, artworkParams);
+
+        expandedArtwork = new ImageView(this);
+        expandedArtwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        expandedArtwork.setVisibility(View.GONE);
+        artworkFrame.addView(expandedArtwork, new FrameLayout.LayoutParams(-1, -1));
+
+        expandedArtInitial = text("M", 64, BG, Typeface.BOLD);
+        expandedArtInitial.setGravity(Gravity.CENTER);
+        expandedArtInitial.setBackground(albumBadge(0));
+        artworkFrame.addView(expandedArtInitial, new FrameLayout.LayoutParams(-1, -1));
+
+        expandedTitle = text("Nada tocando", 24, TEXT, Typeface.BOLD);
+        expandedTitle.setGravity(Gravity.CENTER);
+        expandedTitle.setSingleLine(true);
+        expandedTitle.setEllipsize(TextUtils.TruncateAt.END);
+        page.addView(expandedTitle, new LinearLayout.LayoutParams(-1, -2));
+
+        expandedArtist = text("Escolha uma musica da sua biblioteca", 15, MUTED, Typeface.NORMAL);
+        expandedArtist.setGravity(Gravity.CENTER);
+        expandedArtist.setSingleLine(true);
+        expandedArtist.setEllipsize(TextUtils.TruncateAt.END);
+        page.addView(expandedArtist, new LinearLayout.LayoutParams(-1, -2));
+
+        expandedAlbum = text("Player parado", 13, 0xFF858C99, Typeface.NORMAL);
+        expandedAlbum.setGravity(Gravity.CENTER);
+        expandedAlbum.setSingleLine(true);
+        expandedAlbum.setEllipsize(TextUtils.TruncateAt.END);
+        page.addView(expandedAlbum, new LinearLayout.LayoutParams(-1, -2));
+
+        expandedSeekBar = new SeekBar(this);
+        expandedSeekBar.setMax(1000);
+        expandedSeekBar.setProgress(0);
+        expandedSeekBar.setProgressTintList(ColorStateList.valueOf(ACCENT));
+        expandedSeekBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF333948));
+        expandedSeekBar.setThumbTintList(ColorStateList.valueOf(TEXT));
+        expandedSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    expandedElapsedView.setText(formatMs(progress));
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+                expandedUserSeeking = true;
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                expandedUserSeeking = false;
+                if (playbackService != null) {
+                    playbackService.seekTo(seekBar.getProgress());
+                }
+            }
+        });
+        LinearLayout.LayoutParams expandedSeekParams = new LinearLayout.LayoutParams(-1, dp(42));
+        expandedSeekParams.setMargins(0, dp(26), 0, 0);
+        page.addView(expandedSeekBar, expandedSeekParams);
+
+        LinearLayout timeRow = new LinearLayout(this);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(timeRow, new LinearLayout.LayoutParams(-1, -2));
+        expandedElapsedView = text("0:00", 12, MUTED, Typeface.NORMAL);
+        expandedDurationView = text("0:00", 12, MUTED, Typeface.NORMAL);
+        timeRow.addView(expandedElapsedView, new LinearLayout.LayoutParams(0, -2, 1f));
+        timeRow.addView(expandedDurationView);
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams controlsParams = new LinearLayout.LayoutParams(-1, dp(82));
+        controlsParams.setMargins(0, dp(12), 0, 0);
+        page.addView(controls, controlsParams);
+
+        expandedShuffleButton = iconButton(R.drawable.ic_shuffle, "Aleatorio", 0x1FFFFFFF, MUTED, dp(46));
+        ImageButton previousButton = iconButton(R.drawable.ic_skip_previous, "Anterior", SURFACE_RAISED, TEXT, dp(54));
+        expandedPlayButton = iconButton(R.drawable.ic_play_arrow, "Tocar", ACCENT, BG, dp(68));
+        ImageButton nextButton = iconButton(R.drawable.ic_skip_next, "Proxima", SURFACE_RAISED, TEXT, dp(54));
+        expandedRepeatButton = iconButton(R.drawable.ic_repeat, "Repetir", 0x1FFFFFFF, MUTED, dp(46));
+        controls.addView(expandedShuffleButton);
+        controls.addView(previousButton);
+        controls.addView(expandedPlayButton);
+        controls.addView(nextButton);
+        controls.addView(expandedRepeatButton);
+
+        expandedPlayButton.setOnClickListener(view -> togglePlayback());
+        previousButton.setOnClickListener(view -> {
+            if (playbackService != null) {
+                playbackService.previous();
+            }
+        });
+        nextButton.setOnClickListener(view -> {
+            if (playbackService != null) {
+                playbackService.next();
+            }
+        });
+        expandedShuffleButton.setOnClickListener(view -> {
+            boolean enabled = playbackService == null || !playbackService.isShuffleEnabled();
+            if (playbackService != null) {
+                playbackService.setShuffleEnabled(enabled);
+            }
+            updatePlayer();
+        });
+        expandedRepeatButton.setOnClickListener(view -> {
+            int next = playbackService == null ? 1 : (playbackService.getRepeatMode() + 1) % 3;
+            if (playbackService != null) {
+                playbackService.setRepeatMode(next);
+            }
+            updatePlayer();
+        });
+
+        TextView sourceChip = text("Conteudo local importado pelo PlayerMusic", 12, MUTED, Typeface.BOLD);
+        sourceChip.setGravity(Gravity.CENTER);
+        sourceChip.setPadding(dp(14), 0, dp(14), 0);
+        sourceChip.setBackground(rounded(0x1AFFFFFF, dp(17), 1, 0x22FFFFFF));
+        LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(-2, dp(34));
+        chipParams.gravity = Gravity.CENTER_HORIZONTAL;
+        chipParams.setMargins(0, dp(6), 0, 0);
+        page.addView(sourceChip, chipParams);
     }
 
     private void loadLibrary() {
@@ -628,8 +852,8 @@ public class MainActivity extends Activity {
         refreshTabs();
         searchInput.setVisibility(View.GONE);
         addPlaylistButton.setVisibility(View.VISIBLE);
-        addPlaylistButton.setContentDescription("Cadastrar extensao");
-        addPlaylistButton.setOnClickListener(view -> showExtensionPackageDialog());
+        addPlaylistButton.setContentDescription("Baixar por link");
+        addPlaylistButton.setOnClickListener(view -> showImportLinkDialog());
         backPlaylistButton.setVisibility(View.GONE);
         listView.setAdapter(extensionAdapter);
         extensionAdapter.notifyDataSetChanged();
@@ -641,24 +865,345 @@ public class MainActivity extends Activity {
 
     private void handleExtensionAction(int position) {
         if (position == 0) {
-            openExternalExtension(SNAPTUBE_PACKAGE, "Snaptube");
+            showImportLinkDialog();
         } else if (position == 1) {
+            openExternalExtension(SNAPTUBE_PACKAGE, "Snaptube");
+        } else if (position == 2) {
             String packageName = customExtensionPackage();
             if (packageName.isEmpty() || !isPackageAvailable(packageName)) {
                 showExtensionPackageDialog();
             } else {
                 openExternalExtension(packageName, packageName);
             }
-        } else if (position == 2) {
+        } else if (position == 3) {
             if (hasLibraryPermission()) {
                 loadLibrary();
                 toast("Biblioteca atualizando");
             } else {
                 requestLibraryPermission();
             }
-        } else if (position == 3) {
+        } else if (position == 4) {
             showExtensionSafetyDialog();
         }
+    }
+
+    private void showImportLinkDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(false);
+        input.setMinLines(2);
+        input.setMaxLines(4);
+        input.setHint("https://site.com/musica.mp3");
+        input.setTextColor(TEXT);
+        input.setHintTextColor(MUTED);
+        input.setPadding(dp(16), dp(8), dp(16), dp(8));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Baixar audio por link")
+                .setMessage("Cole um link direto de audio. Links do YouTube serao abertos no app oficial, sem download.")
+                .setView(input)
+                .setPositiveButton("Baixar", null)
+                .setNegativeButton("Cancelar", null)
+                .create();
+        dialog.setOnShowListener(view -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+            String link = input.getText().toString().trim();
+            if (link.isEmpty()) {
+                input.setError("Cole um link");
+                return;
+            }
+            dialog.dismiss();
+            importAudioLink(link);
+        }));
+        dialog.show();
+    }
+
+    private void importAudioLink(String link) {
+        Uri uri = Uri.parse(link);
+        String scheme = uri.getScheme();
+        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+            toast("Use um link http ou https");
+            return;
+        }
+        if (isYouTubeUrl(uri)) {
+            openExternalUrl(link);
+            toast("YouTube aberto sem download");
+            return;
+        }
+        toast("Baixando audio...");
+        new Thread(() -> {
+            try {
+                String savedName = downloadAudioFile(link);
+                runOnUiThread(() -> {
+                    toast("Audio salvo: " + savedName);
+                    if (hasLibraryPermission()) {
+                        loadLibrary();
+                    } else {
+                        requestLibraryPermission();
+                    }
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> showDownloadError(error.getMessage()));
+            }
+        }).start();
+    }
+
+    private boolean isYouTubeUrl(Uri uri) {
+        String host = uri.getHost();
+        if (host == null) {
+            return false;
+        }
+        String normalized = host.toLowerCase(Locale.ROOT);
+        return normalized.equals("youtu.be") || normalized.endsWith(".youtube.com") || normalized.equals("youtube.com");
+    }
+
+    private void openExternalUrl(String link) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link)));
+        } catch (RuntimeException error) {
+            toast("Nao foi possivel abrir o link");
+        }
+    }
+
+    private void showDownloadError(String message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Download nao iniciado")
+                .setMessage(message == null || message.isEmpty() ? "Use um link direto de audio, como mp3, m4a, wav, ogg ou flac." : message)
+                .setPositiveButton("Entendi", null)
+                .show();
+    }
+
+    private String downloadAudioFile(String link) throws Exception {
+        HttpURLConnection connection = openConnectionFollowingRedirects(link);
+        try {
+            String contentType = cleanContentType(connection.getContentType());
+            String fileName = fileNameFromLink(link, contentType);
+            if (!isAudioResponse(fileName, contentType)) {
+                throw new Exception("Esse link nao aponta diretamente para um arquivo de audio. Use mp3, m4a, wav, ogg, flac, aac, opus ou webm.");
+            }
+            String mimeType = mimeTypeFor(fileName, contentType);
+            if (!isAudioFileName(fileName)) {
+                fileName = fileName + "." + extensionForMime(mimeType);
+            }
+            try (InputStream input = connection.getInputStream()) {
+                saveAudioStream(input, fileName, mimeType);
+            }
+            return fileName;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private HttpURLConnection openConnectionFollowingRedirects(String link) throws Exception {
+        URL url = new URL(link);
+        for (int i = 0; i < MAX_REDIRECTS; i++) {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setRequestProperty("User-Agent", "PlayerMusic/1.3");
+            int code = connection.getResponseCode();
+            if (code >= 300 && code < 400) {
+                String location = connection.getHeaderField("Location");
+                connection.disconnect();
+                if (location == null || location.trim().isEmpty()) {
+                    throw new Exception("O link redirecionou sem informar o destino.");
+                }
+                url = new URL(url, location);
+                continue;
+            }
+            if (code < 200 || code >= 300) {
+                connection.disconnect();
+                throw new Exception("O servidor respondeu com erro " + code + ".");
+            }
+            return connection;
+        }
+        throw new Exception("O link redirecionou muitas vezes.");
+    }
+
+    private void saveAudioStream(InputStream input, String fileName, String mimeType) throws Exception {
+        if (Build.VERSION.SDK_INT >= 29) {
+            saveAudioWithMediaStore(input, fileName, mimeType);
+        } else {
+            saveAudioLegacy(input, fileName, mimeType);
+        }
+    }
+
+    private void saveAudioWithMediaStore(InputStream input, String fileName, String mimeType) throws Exception {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/PlayerMusic");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri audioUri = getContentResolver().insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
+        if (audioUri == null) {
+            throw new Exception("Nao foi possivel criar o arquivo de audio.");
+        }
+        boolean saved = false;
+        try (OutputStream output = getContentResolver().openOutputStream(audioUri)) {
+            if (output == null) {
+                throw new Exception("Nao foi possivel abrir o arquivo de destino.");
+            }
+            copyStream(input, output);
+            saved = true;
+        } finally {
+            values.clear();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            getContentResolver().update(audioUri, values, null, null);
+            if (!saved) {
+                getContentResolver().delete(audioUri, null, null);
+            }
+        }
+    }
+
+    private void saveAudioLegacy(InputStream input, String fileName, String mimeType) throws Exception {
+        File baseDir = getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+        if (baseDir == null) {
+            baseDir = getFilesDir();
+        }
+        File dir = new File(baseDir, "PlayerMusic");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new Exception("Nao foi possivel criar a pasta de musicas.");
+        }
+        File target = uniqueFile(dir, fileName);
+        try (OutputStream output = new FileOutputStream(target)) {
+            copyStream(input, output);
+        }
+        MediaScannerConnection.scanFile(this, new String[] { target.getAbsolutePath() }, new String[] { mimeType }, null);
+    }
+
+    private void copyStream(InputStream input, OutputStream output) throws Exception {
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        output.flush();
+    }
+
+    private File uniqueFile(File dir, String fileName) {
+        File target = new File(dir, fileName);
+        if (!target.exists()) {
+            return target;
+        }
+        String base = fileName;
+        String extension = "";
+        int dot = fileName.lastIndexOf('.');
+        if (dot > 0) {
+            base = fileName.substring(0, dot);
+            extension = fileName.substring(dot);
+        }
+        int index = 1;
+        while (target.exists()) {
+            target = new File(dir, base + "-" + index + extension);
+            index++;
+        }
+        return target;
+    }
+
+    private String fileNameFromLink(String link, String contentType) {
+        String name = Uri.parse(link).getLastPathSegment();
+        if (name == null || name.trim().isEmpty()) {
+            name = "playermusic-" + System.currentTimeMillis();
+        }
+        try {
+            name = URLDecoder.decode(name, "UTF-8");
+        } catch (Exception ignored) {
+        }
+        name = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        if (name.isEmpty()) {
+            name = "playermusic-" + System.currentTimeMillis();
+        }
+        if (!isAudioFileName(name) && contentType != null && contentType.startsWith("audio/")) {
+            name = name + "." + extensionForMime(contentType);
+        }
+        return name;
+    }
+
+    private boolean isAudioResponse(String fileName, String contentType) {
+        return (contentType != null && contentType.startsWith("audio/")) || isAudioFileName(fileName);
+    }
+
+    private boolean isAudioFileName(String fileName) {
+        String lower = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".mp3")
+                || lower.endsWith(".m4a")
+                || lower.endsWith(".wav")
+                || lower.endsWith(".ogg")
+                || lower.endsWith(".flac")
+                || lower.endsWith(".aac")
+                || lower.endsWith(".opus")
+                || lower.endsWith(".amr")
+                || lower.endsWith(".3gp")
+                || lower.endsWith(".webm");
+    }
+
+    private String cleanContentType(String contentType) {
+        if (contentType == null) {
+            return null;
+        }
+        return contentType.split(";")[0].trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String mimeTypeFor(String fileName, String contentType) {
+        if (contentType != null && contentType.startsWith("audio/")) {
+            return contentType;
+        }
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".m4a")) {
+            return "audio/mp4";
+        }
+        if (lower.endsWith(".wav")) {
+            return "audio/wav";
+        }
+        if (lower.endsWith(".ogg")) {
+            return "audio/ogg";
+        }
+        if (lower.endsWith(".flac")) {
+            return "audio/flac";
+        }
+        if (lower.endsWith(".aac")) {
+            return "audio/aac";
+        }
+        if (lower.endsWith(".opus")) {
+            return "audio/opus";
+        }
+        if (lower.endsWith(".amr")) {
+            return "audio/amr";
+        }
+        if (lower.endsWith(".3gp")) {
+            return "audio/3gpp";
+        }
+        if (lower.endsWith(".webm")) {
+            return "audio/webm";
+        }
+        return "audio/mpeg";
+    }
+
+    private String extensionForMime(String mimeType) {
+        if (mimeType == null) {
+            return "mp3";
+        }
+        String normalized = mimeType.toLowerCase(Locale.ROOT);
+        if (normalized.contains("mp4") || normalized.contains("m4a")) {
+            return "m4a";
+        }
+        if (normalized.contains("wav")) {
+            return "wav";
+        }
+        if (normalized.contains("ogg")) {
+            return "ogg";
+        }
+        if (normalized.contains("flac")) {
+            return "flac";
+        }
+        if (normalized.contains("aac")) {
+            return "aac";
+        }
+        if (normalized.contains("opus")) {
+            return "opus";
+        }
+        if (normalized.contains("webm")) {
+            return "webm";
+        }
+        return "mp3";
     }
 
     private void openExternalExtension(String packageName, String label) {
@@ -753,22 +1298,49 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showExpandedPlayer() {
+        if (expandedPlayer != null) {
+            updatePlayer();
+            expandedPlayer.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void hideExpandedPlayer() {
+        if (expandedPlayer != null) {
+            expandedPlayer.setVisibility(View.GONE);
+        }
+    }
+
     private void updatePlayer() {
         if (playbackService == null || !playbackService.hasTrack()) {
             nowTitle.setText("Nada tocando");
             nowArtist.setText("Escolha uma musica da sua biblioteca");
             nowAlbum.setText("Player parado");
             queueInfo.setText("Fila vazia");
+            expandedTitle.setText("Nada tocando");
+            expandedArtist.setText("Escolha uma musica da sua biblioteca");
+            expandedAlbum.setText("Player parado");
+            expandedQueueInfo.setText("Fila vazia");
             updateArtwork(null);
+            updateExpandedArtwork(null);
             playButton.setImageResource(R.drawable.ic_play_arrow);
+            expandedPlayButton.setImageResource(R.drawable.ic_play_arrow);
             elapsedView.setText("0:00");
             durationView.setText("0:00");
+            expandedElapsedView.setText("0:00");
+            expandedDurationView.setText("0:00");
             seekBar.setMax(1000);
+            expandedSeekBar.setMax(1000);
             if (!userSeeking) {
                 seekBar.setProgress(0);
             }
+            if (!expandedUserSeeking) {
+                expandedSeekBar.setProgress(0);
+            }
             shuffleButton.setColorFilter(MUTED);
             repeatButton.setColorFilter(MUTED);
+            expandedShuffleButton.setColorFilter(MUTED);
+            expandedRepeatButton.setColorFilter(MUTED);
             syncListPlaybackState(null, false);
             return;
         }
@@ -778,19 +1350,34 @@ public class MainActivity extends Activity {
         nowArtist.setText(track.subtitle());
         nowAlbum.setText(track.album);
         queueInfo.setText(queueLabel());
+        expandedTitle.setText(track.title);
+        expandedArtist.setText(track.subtitle());
+        expandedAlbum.setText(track.album);
+        expandedQueueInfo.setText(queueLabel());
         updateArtwork(track);
+        updateExpandedArtwork(track);
         playButton.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
+        expandedPlayButton.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
         int duration = Math.max(0, playbackService.getDuration());
         int position = Math.max(0, playbackService.getPosition());
         seekBar.setMax(Math.max(1000, duration));
+        expandedSeekBar.setMax(Math.max(1000, duration));
         if (!userSeeking) {
             seekBar.setProgress(Math.min(position, seekBar.getMax()));
         }
+        if (!expandedUserSeeking) {
+            expandedSeekBar.setProgress(Math.min(position, expandedSeekBar.getMax()));
+        }
         elapsedView.setText(formatMs(position));
         durationView.setText(formatMs(duration));
+        expandedElapsedView.setText(formatMs(position));
+        expandedDurationView.setText(formatMs(duration));
         shuffleButton.setColorFilter(playbackService.isShuffleEnabled() ? ACCENT : MUTED);
         repeatButton.setColorFilter(playbackService.getRepeatMode() == 0 ? MUTED : WARM);
         repeatButton.setContentDescription(playbackService.getRepeatMode() == 2 ? "Repetir uma" : "Repetir");
+        expandedShuffleButton.setColorFilter(playbackService.isShuffleEnabled() ? ACCENT : MUTED);
+        expandedRepeatButton.setColorFilter(playbackService.getRepeatMode() == 0 ? MUTED : WARM);
+        expandedRepeatButton.setContentDescription(playbackService.getRepeatMode() == 2 ? "Repetir uma" : "Repetir");
         syncListPlaybackState(track, playing);
     }
 
@@ -995,27 +1582,35 @@ public class MainActivity extends Activity {
     }
 
     private void updateArtwork(Track track) {
+        setArtwork(nowArtwork, nowArtInitial, track);
+    }
+
+    private void updateExpandedArtwork(Track track) {
+        setArtwork(expandedArtwork, expandedArtInitial, track);
+    }
+
+    private void setArtwork(ImageView artwork, TextView initialView, Track track) {
         if (track == null) {
-            nowArtwork.setImageDrawable(null);
-            nowArtwork.setVisibility(View.GONE);
-            nowArtInitial.setText("M");
-            nowArtInitial.setBackground(albumBadge(0));
-            nowArtInitial.setVisibility(View.VISIBLE);
+            artwork.setImageDrawable(null);
+            artwork.setVisibility(View.GONE);
+            initialView.setText("M");
+            initialView.setBackground(albumBadge(0));
+            initialView.setVisibility(View.VISIBLE);
             return;
         }
-        nowArtInitial.setText(trackInitial(track));
-        nowArtInitial.setBackground(albumBadge(track.albumId));
-        nowArtwork.setImageDrawable(null);
+        initialView.setText(trackInitial(track));
+        initialView.setBackground(albumBadge(track.albumId));
+        artwork.setImageDrawable(null);
         if (track.albumId > 0) {
             try {
-                nowArtwork.setImageURI(albumArtUri(track.albumId));
+                artwork.setImageURI(albumArtUri(track.albumId));
             } catch (RuntimeException ignored) {
-                nowArtwork.setImageDrawable(null);
+                artwork.setImageDrawable(null);
             }
         }
-        boolean hasArtwork = nowArtwork.getDrawable() != null;
-        nowArtwork.setVisibility(hasArtwork ? View.VISIBLE : View.GONE);
-        nowArtInitial.setVisibility(hasArtwork ? View.GONE : View.VISIBLE);
+        boolean hasArtwork = artwork.getDrawable() != null;
+        artwork.setVisibility(hasArtwork ? View.VISIBLE : View.GONE);
+        initialView.setVisibility(hasArtwork ? View.GONE : View.VISIBLE);
     }
 
     private Uri albumArtUri(long albumId) {
@@ -1164,6 +1759,13 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    private GradientDrawable expandedArtworkBackground() {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] { 0xFF314048, 0xFF171A21, 0xFF3DDB9A });
+        drawable.setCornerRadius(dp(22));
+        drawable.setStroke(dp(1), 0xFF3A4352);
+        return drawable;
+    }
+
     private GradientDrawable rowBackground(boolean active) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(active ? 0xFF1D302D : SURFACE);
@@ -1298,11 +1900,19 @@ public class MainActivity extends Activity {
         String customPackage = customExtensionPackage();
         boolean customReady = isPackageAvailable(customPackage);
         items.add(new ExtensionItem(
+                "L",
+                "Baixar por link",
+                "Aceita links diretos de audio: mp3, m4a, wav, ogg e flac",
+                "Colar",
+                ACCENT,
+                true
+        ));
+        items.add(new ExtensionItem(
                 "S",
                 "Snaptube",
                 snaptubeReady ? "Instalado - abrir app externo" : "Nao instalado neste aparelho",
                 snaptubeReady ? "Abrir" : "Ausente",
-                ACCENT,
+                WARM,
                 snaptubeReady
         ));
         items.add(new ExtensionItem(
