@@ -3,13 +3,17 @@ package com.acezeradev.playermusic;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentUris;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -29,6 +33,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
@@ -46,13 +51,16 @@ public class MainActivity extends Activity {
     private static final int TAB_PLAYLISTS = 1;
     private static final int TAB_QUEUE = 2;
 
-    private static final int BG = 0xFF101116;
-    private static final int SURFACE = 0xFF181A22;
-    private static final int SURFACE_ALT = 0xFF222533;
+    private static final int BG = 0xFF090B10;
+    private static final int SURFACE = 0xFF171A21;
+    private static final int SURFACE_ALT = 0xFF232836;
+    private static final int SURFACE_RAISED = 0xFF20242F;
     private static final int TEXT = 0xFFF5F7FA;
     private static final int MUTED = 0xFFA7ADB8;
     private static final int ACCENT = 0xFF3DDB9A;
     private static final int WARM = 0xFFFFB86C;
+    private static final int BLUE = 0xFF7CC7FF;
+    private static final int ROSE = 0xFFE86BA5;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final MusicRepository repository = new MusicRepository();
@@ -63,8 +71,15 @@ public class MainActivity extends Activity {
     private TextView tabLibrary;
     private TextView tabPlaylists;
     private TextView tabQueue;
+    private TextView librarySummary;
+    private TextView durationSummary;
+    private TextView playlistSummary;
+    private ImageView nowArtwork;
+    private TextView nowArtInitial;
     private TextView nowTitle;
     private TextView nowArtist;
+    private TextView nowAlbum;
+    private TextView queueInfo;
     private TextView elapsedView;
     private TextView durationView;
     private EditText searchInput;
@@ -90,6 +105,8 @@ public class MainActivity extends Activity {
     private Playlist openPlaylist;
     private ArrayList<Track> pendingQueue;
     private int pendingIndex = 0;
+    private String lastRenderedTrackUri = "";
+    private boolean lastRenderedPlaying = false;
 
     private final MusicPlaybackService.PlaybackListener playbackListener = () -> runOnUiThread(() -> {
         updatePlayer();
@@ -183,9 +200,9 @@ public class MainActivity extends Activity {
         titleBlock.setOrientation(LinearLayout.VERTICAL);
         titleRow.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        TextView title = text("PlayerMusic", 30, TEXT, Typeface.BOLD);
+        TextView title = text("PlayerMusic", 29, TEXT, Typeface.BOLD);
         titleBlock.addView(title);
-        subtitleView = text("Biblioteca local", 14, MUTED, Typeface.NORMAL);
+        subtitleView = text("Biblioteca local pronta para tocar", 14, MUTED, Typeface.NORMAL);
         titleBlock.addView(subtitleView);
 
         backPlaylistButton = iconButton(R.drawable.ic_arrow_back, "Voltar", SURFACE_ALT, TEXT, dp(42));
@@ -211,6 +228,18 @@ public class MainActivity extends Activity {
         permissionButton.setVisibility(View.GONE);
         permissionButton.setOnClickListener(view -> requestLibraryPermission());
         titleRow.addView(permissionButton, new LinearLayout.LayoutParams(-2, dp(42)));
+
+        LinearLayout summaryRow = new LinearLayout(this);
+        summaryRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(-1, dp(38));
+        summaryParams.setMargins(0, dp(14), 0, 0);
+        header.addView(summaryRow, summaryParams);
+        librarySummary = statPill("0 musicas", ACCENT);
+        durationSummary = statPill("0 min", BLUE);
+        playlistSummary = statPill("0 playlists", WARM);
+        summaryRow.addView(librarySummary, statParams());
+        summaryRow.addView(durationSummary, statParams());
+        summaryRow.addView(playlistSummary, statParams());
 
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
@@ -238,7 +267,7 @@ public class MainActivity extends Activity {
             }
         });
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(48));
-        searchParams.setMargins(0, dp(16), 0, dp(12));
+        searchParams.setMargins(0, dp(14), 0, dp(12));
         header.addView(searchInput, searchParams);
 
         LinearLayout tabs = new LinearLayout(this);
@@ -268,7 +297,8 @@ public class MainActivity extends Activity {
         FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         listView = new ListView(this);
-        listView.setDivider(null);
+        listView.setDivider(new ColorDrawable(Color.TRANSPARENT));
+        listView.setDividerHeight(dp(8));
         listView.setSelector(android.R.color.transparent);
         listView.setCacheColorHint(Color.TRANSPARENT);
         listView.setClipToPadding(false);
@@ -283,28 +313,70 @@ public class MainActivity extends Activity {
 
         buildPlayer(root);
         refreshTabs();
+        updateLibrarySummary();
     }
 
     private void buildPlayer(LinearLayout root) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(14), dp(18), dp(14));
+        panel.setPadding(dp(18), dp(16), dp(18), dp(14));
         panel.setBackground(playerBackground());
         root.addView(panel, new LinearLayout.LayoutParams(-1, -2));
 
-        nowTitle = text("Nada tocando", 17, TEXT, Typeface.BOLD);
+        LinearLayout nowRow = new LinearLayout(this);
+        nowRow.setGravity(Gravity.CENTER_VERTICAL);
+        panel.addView(nowRow, new LinearLayout.LayoutParams(-1, -2));
+
+        FrameLayout artworkFrame = new FrameLayout(this);
+        artworkFrame.setBackground(rounded(SURFACE_RAISED, dp(18), 1, 0xFF303746));
+        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(76), dp(76));
+        nowRow.addView(artworkFrame, artworkParams);
+
+        nowArtwork = new ImageView(this);
+        nowArtwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        nowArtwork.setVisibility(View.GONE);
+        artworkFrame.addView(nowArtwork, new FrameLayout.LayoutParams(-1, -1));
+
+        nowArtInitial = text("M", 30, BG, Typeface.BOLD);
+        nowArtInitial.setGravity(Gravity.CENTER);
+        nowArtInitial.setBackground(albumBadge(0));
+        artworkFrame.addView(nowArtInitial, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout nowMeta = new LinearLayout(this);
+        nowMeta.setOrientation(LinearLayout.VERTICAL);
+        nowMeta.setPadding(dp(14), 0, dp(10), 0);
+        nowRow.addView(nowMeta, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView nowLabel = text("TOCANDO AGORA", 11, ACCENT, Typeface.BOLD);
+        nowMeta.addView(nowLabel);
+
+        nowTitle = text("Nada tocando", 18, TEXT, Typeface.BOLD);
         nowTitle.setSingleLine(true);
         nowTitle.setEllipsize(TextUtils.TruncateAt.END);
-        panel.addView(nowTitle);
+        nowMeta.addView(nowTitle);
 
         nowArtist = text("Escolha uma musica da sua biblioteca", 13, MUTED, Typeface.NORMAL);
         nowArtist.setSingleLine(true);
         nowArtist.setEllipsize(TextUtils.TruncateAt.END);
-        panel.addView(nowArtist);
+        nowMeta.addView(nowArtist);
+
+        nowAlbum = text("Player parado", 12, 0xFF858C99, Typeface.NORMAL);
+        nowAlbum.setSingleLine(true);
+        nowAlbum.setEllipsize(TextUtils.TruncateAt.END);
+        nowMeta.addView(nowAlbum);
+
+        queueInfo = text("Fila vazia", 12, TEXT, Typeface.BOLD);
+        queueInfo.setGravity(Gravity.CENTER);
+        queueInfo.setPadding(dp(10), 0, dp(10), 0);
+        queueInfo.setBackground(rounded(0x263DDB9A, dp(16), 1, 0x443DDB9A));
+        nowRow.addView(queueInfo, new LinearLayout.LayoutParams(-2, dp(32)));
 
         seekBar = new SeekBar(this);
         seekBar.setMax(1000);
         seekBar.setProgress(0);
+        seekBar.setProgressTintList(ColorStateList.valueOf(ACCENT));
+        seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF333948));
+        seekBar.setThumbTintList(ColorStateList.valueOf(TEXT));
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -326,7 +398,9 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        panel.addView(seekBar, new LinearLayout.LayoutParams(-1, dp(38)));
+        LinearLayout.LayoutParams seekParams = new LinearLayout.LayoutParams(-1, dp(38));
+        seekParams.setMargins(0, dp(10), 0, 0);
+        panel.addView(seekBar, seekParams);
 
         LinearLayout timeRow = new LinearLayout(this);
         timeRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -338,13 +412,15 @@ public class MainActivity extends Activity {
 
         LinearLayout controls = new LinearLayout(this);
         controls.setGravity(Gravity.CENTER);
-        panel.addView(controls, new LinearLayout.LayoutParams(-1, dp(58)));
+        LinearLayout.LayoutParams controlsParams = new LinearLayout.LayoutParams(-1, dp(60));
+        controlsParams.setMargins(0, dp(2), 0, 0);
+        panel.addView(controls, controlsParams);
 
-        shuffleButton = iconButton(R.drawable.ic_shuffle, "Aleatorio", Color.TRANSPARENT, MUTED, dp(44));
-        ImageButton previousButton = iconButton(R.drawable.ic_skip_previous, "Anterior", Color.TRANSPARENT, TEXT, dp(48));
-        playButton = iconButton(R.drawable.ic_play_arrow, "Tocar", ACCENT, BG, dp(56));
-        ImageButton nextButton = iconButton(R.drawable.ic_skip_next, "Proxima", Color.TRANSPARENT, TEXT, dp(48));
-        repeatButton = iconButton(R.drawable.ic_repeat, "Repetir", Color.TRANSPARENT, MUTED, dp(44));
+        shuffleButton = iconButton(R.drawable.ic_shuffle, "Aleatorio", 0x1FFFFFFF, MUTED, dp(44));
+        ImageButton previousButton = iconButton(R.drawable.ic_skip_previous, "Anterior", SURFACE_RAISED, TEXT, dp(48));
+        playButton = iconButton(R.drawable.ic_play_arrow, "Tocar", ACCENT, BG, dp(58));
+        ImageButton nextButton = iconButton(R.drawable.ic_skip_next, "Proxima", SURFACE_RAISED, TEXT, dp(48));
+        repeatButton = iconButton(R.drawable.ic_repeat, "Repetir", 0x1FFFFFFF, MUTED, dp(44));
         controls.addView(shuffleButton);
         controls.addView(previousButton);
         controls.addView(playButton);
@@ -388,6 +464,7 @@ public class MainActivity extends Activity {
                 allTracks.clear();
                 allTracks.addAll(loaded);
                 libraryLoading = false;
+                updateLibrarySummary();
                 refreshCurrentView();
             });
         }).start();
@@ -398,6 +475,7 @@ public class MainActivity extends Activity {
         addPlaylistButton.setVisibility(View.GONE);
         backPlaylistButton.setVisibility(View.GONE);
         searchInput.setVisibility(View.GONE);
+        updateLibrarySummary();
         visibleTracks.clear();
         listView.setAdapter(trackAdapter);
         trackAdapter.setTracks(visibleTracks);
@@ -454,6 +532,7 @@ public class MainActivity extends Activity {
         addPlaylistButton.setVisibility(View.VISIBLE);
         backPlaylistButton.setVisibility(View.GONE);
         ArrayList<Playlist> playlists = playlistStore.getPlaylists();
+        updateLibrarySummary();
         listView.setAdapter(playlistAdapter);
         playlistAdapter.setPlaylists(playlists);
         listView.setOnItemClickListener((parent, view, position, id) -> {
@@ -528,7 +607,7 @@ public class MainActivity extends Activity {
     private void togglePlayback() {
         if (playbackService != null && playbackService.hasTrack()) {
             playbackService.toggle();
-        } else if (!visibleTracks.isEmpty() && currentTab != TAB_PLAYLISTS || (currentTab == TAB_PLAYLISTS && openPlaylist != null && !visibleTracks.isEmpty())) {
+        } else if (!visibleTracks.isEmpty() && (currentTab != TAB_PLAYLISTS || openPlaylist != null)) {
             playFrom(visibleTracks, 0);
         } else if (!allTracks.isEmpty()) {
             playFrom(allTracks, 0);
@@ -539,6 +618,9 @@ public class MainActivity extends Activity {
         if (playbackService == null || !playbackService.hasTrack()) {
             nowTitle.setText("Nada tocando");
             nowArtist.setText("Escolha uma musica da sua biblioteca");
+            nowAlbum.setText("Player parado");
+            queueInfo.setText("Fila vazia");
+            updateArtwork(null);
             playButton.setImageResource(R.drawable.ic_play_arrow);
             elapsedView.setText("0:00");
             durationView.setText("0:00");
@@ -548,12 +630,17 @@ public class MainActivity extends Activity {
             }
             shuffleButton.setColorFilter(MUTED);
             repeatButton.setColorFilter(MUTED);
+            syncListPlaybackState(null, false);
             return;
         }
         Track track = playbackService.getCurrentTrack();
+        boolean playing = playbackService.isPlaying();
         nowTitle.setText(track.title);
         nowArtist.setText(track.subtitle());
-        playButton.setImageResource(playbackService.isPlaying() ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
+        nowAlbum.setText(track.album);
+        queueInfo.setText(queueLabel());
+        updateArtwork(track);
+        playButton.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
         int duration = Math.max(0, playbackService.getDuration());
         int position = Math.max(0, playbackService.getPosition());
         seekBar.setMax(Math.max(1000, duration));
@@ -565,6 +652,7 @@ public class MainActivity extends Activity {
         shuffleButton.setColorFilter(playbackService.isShuffleEnabled() ? ACCENT : MUTED);
         repeatButton.setColorFilter(playbackService.getRepeatMode() == 0 ? MUTED : WARM);
         repeatButton.setContentDescription(playbackService.getRepeatMode() == 2 ? "Repetir uma" : "Repetir");
+        syncListPlaybackState(track, playing);
     }
 
     private void showTrackOptions(Track track, Playlist playlistContext) {
@@ -728,6 +816,95 @@ public class MainActivity extends Activity {
         return searchInput.getText().toString().trim().toLowerCase(Locale.ROOT);
     }
 
+    private void updateLibrarySummary() {
+        if (librarySummary == null) {
+            return;
+        }
+        long totalDuration = 0;
+        for (Track track : allTracks) {
+            totalDuration += Math.max(0, track.duration);
+        }
+        int playlistCount = playlistStore == null ? 0 : playlistStore.getPlaylists().size();
+        librarySummary.setText(countLabel(allTracks.size(), "musica", "musicas"));
+        durationSummary.setText(formatLibraryDuration(totalDuration));
+        playlistSummary.setText(countLabel(playlistCount, "playlist", "playlists"));
+    }
+
+    private String countLabel(int count, String singular, String plural) {
+        return count + " " + (count == 1 ? singular : plural);
+    }
+
+    private String formatLibraryDuration(long milliseconds) {
+        long minutes = Math.max(0, milliseconds / 60000);
+        if (minutes < 60) {
+            return minutes + " min";
+        }
+        long hours = minutes / 60;
+        long rest = minutes % 60;
+        return rest == 0 ? hours + " h" : hours + " h " + rest + " min";
+    }
+
+    private String queueLabel() {
+        if (playbackService == null) {
+            return "Fila vazia";
+        }
+        ArrayList<Track> queue = playbackService.getQueue();
+        if (queue.isEmpty()) {
+            return "Fila vazia";
+        }
+        return (playbackService.getCurrentIndex() + 1) + "/" + queue.size();
+    }
+
+    private void updateArtwork(Track track) {
+        if (track == null) {
+            nowArtwork.setImageDrawable(null);
+            nowArtwork.setVisibility(View.GONE);
+            nowArtInitial.setText("M");
+            nowArtInitial.setBackground(albumBadge(0));
+            nowArtInitial.setVisibility(View.VISIBLE);
+            return;
+        }
+        nowArtInitial.setText(trackInitial(track));
+        nowArtInitial.setBackground(albumBadge(track.albumId));
+        nowArtwork.setImageDrawable(null);
+        if (track.albumId > 0) {
+            try {
+                nowArtwork.setImageURI(albumArtUri(track.albumId));
+            } catch (RuntimeException ignored) {
+                nowArtwork.setImageDrawable(null);
+            }
+        }
+        boolean hasArtwork = nowArtwork.getDrawable() != null;
+        nowArtwork.setVisibility(hasArtwork ? View.VISIBLE : View.GONE);
+        nowArtInitial.setVisibility(hasArtwork ? View.GONE : View.VISIBLE);
+    }
+
+    private Uri albumArtUri(long albumId) {
+        return ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId);
+    }
+
+    private String trackInitial(Track track) {
+        String title = track == null ? "" : track.title.trim();
+        return title.isEmpty() ? "M" : title.substring(0, 1).toUpperCase(Locale.ROOT);
+    }
+
+    private void syncListPlaybackState(Track track, boolean playing) {
+        String uri = track == null ? "" : track.uri;
+        if (uri.equals(lastRenderedTrackUri) && playing == lastRenderedPlaying) {
+            return;
+        }
+        lastRenderedTrackUri = uri;
+        lastRenderedPlaying = playing;
+        if (listView != null && listView.getAdapter() == trackAdapter) {
+            trackAdapter.notifyDataSetChanged();
+        }
+    }
+
+    private boolean isCurrentTrack(Track track) {
+        Track current = playbackService == null ? null : playbackService.getCurrentTrack();
+        return current != null && track != null && current.uri.equals(track.uri);
+    }
+
     private boolean hasLibraryPermission() {
         if (Build.VERSION.SDK_INT >= 33) {
             return checkSelfPermission(Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED;
@@ -769,7 +946,23 @@ public class MainActivity extends Activity {
         return tab;
     }
 
+    private TextView statPill(String value, int tint) {
+        TextView pill = text(value, 12, TEXT, Typeface.BOLD);
+        pill.setGravity(Gravity.CENTER);
+        pill.setSingleLine(true);
+        pill.setEllipsize(TextUtils.TruncateAt.END);
+        pill.setPadding(dp(8), 0, dp(8), 0);
+        pill.setBackground(rounded(alphaColor(tint, 36), dp(15), 1, alphaColor(tint, 86)));
+        return pill;
+    }
+
     private LinearLayout.LayoutParams tabParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
+        params.setMargins(dp(3), 0, dp(3), 0);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams statParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
         params.setMargins(dp(3), 0, dp(3), 0);
         return params;
@@ -803,6 +996,10 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private int alphaColor(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
     private GradientDrawable rounded(int color, int radius, int strokeWidth, int strokeColor) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -821,9 +1018,17 @@ public class MainActivity extends Activity {
     }
 
     private GradientDrawable playerBackground() {
-        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] { SURFACE, 0xFF1E2630, 0xFF1E1D24 });
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] { 0xFF151B20, 0xFF202734, 0xFF211C25 });
         drawable.setCornerRadii(new float[] { dp(24), dp(24), dp(24), dp(24), 0, 0, 0, 0 });
-        drawable.setStroke(dp(1), 0xFF2B3140);
+        drawable.setStroke(dp(1), 0xFF303746);
+        return drawable;
+    }
+
+    private GradientDrawable rowBackground(boolean active) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(active ? 0xFF1D302D : SURFACE);
+        drawable.setCornerRadius(dp(10));
+        drawable.setStroke(dp(1), active ? ACCENT : 0xFF272C38);
         return drawable;
     }
 
@@ -892,12 +1097,12 @@ public class MainActivity extends Activity {
             root = new LinearLayout(MainActivity.this);
             root.setGravity(Gravity.CENTER_VERTICAL);
             root.setPadding(dp(12), dp(8), dp(8), dp(8));
-            root.setBackground(rounded(SURFACE, dp(8), 1, 0xFF272C38));
-            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(76)));
+            root.setBackground(rowBackground(false));
+            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(78)));
 
             badge = text("M", 18, BG, Typeface.BOLD);
             badge.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(50), dp(50));
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(52), dp(52));
             root.addView(badge, badgeParams);
 
             LinearLayout labels = new LinearLayout(MainActivity.this);
@@ -924,21 +1129,26 @@ public class MainActivity extends Activity {
         }
 
         void bind(Track track) {
+            boolean active = isCurrentTrack(track);
             title.setText(track.title);
-            subtitle.setText(track.subtitle());
+            title.setTextColor(active ? ACCENT : TEXT);
+            subtitle.setText(active && playbackService != null && playbackService.isPlaying() ? "Tocando agora - " + track.subtitle() : track.subtitle());
+            subtitle.setTextColor(active ? TEXT : MUTED);
             duration.setText(track.formattedDuration());
-            String initial = track.title.trim().isEmpty() ? "M" : track.title.substring(0, 1).toUpperCase(Locale.ROOT);
-            badge.setText(initial);
+            duration.setTextColor(active ? ACCENT : MUTED);
+            badge.setText(active && playbackService != null && playbackService.isPlaying() ? ">" : trackInitial(track));
             badge.setBackground(albumBadge(track.albumId));
+            root.setBackground(rowBackground(active));
+            more.setColorFilter(active ? ACCENT : MUTED);
             more.setOnClickListener(view -> showTrackOptions(track, currentTab == TAB_PLAYLISTS ? openPlaylist : null));
         }
     }
 
     private GradientDrawable albumBadge(long seed) {
-        int[] colors = new int[] { ACCENT, WARM, 0xFF7CC7FF, 0xFFE86BA5, 0xFFA7F070 };
+        int[] colors = new int[] { ACCENT, WARM, BLUE, ROSE, 0xFFA7F070 };
         int color = colors[(int) (Math.abs(seed) % colors.length)];
         GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] { color, 0xFFFFFFFF });
-        drawable.setCornerRadius(dp(8));
+        drawable.setCornerRadius(dp(10));
         return drawable;
     }
 
@@ -992,14 +1202,14 @@ public class MainActivity extends Activity {
             root = new LinearLayout(MainActivity.this);
             root.setGravity(Gravity.CENTER_VERTICAL);
             root.setPadding(dp(12), dp(8), dp(8), dp(8));
-            root.setBackground(rounded(SURFACE, dp(8), 1, 0xFF272C38));
-            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(78)));
+            root.setBackground(rowBackground(false));
+            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(80)));
 
             badge = text("", 18, BG, Typeface.BOLD);
             badge.setGravity(Gravity.CENTER);
-            badge.setBackground(rounded(WARM, dp(8), 0, 0));
+            badge.setBackground(rounded(WARM, dp(10), 0, 0));
             badge.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_playlist, 0, 0, 0);
-            root.addView(badge, new LinearLayout.LayoutParams(dp(50), dp(50)));
+            root.addView(badge, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
             LinearLayout labels = new LinearLayout(MainActivity.this);
             labels.setOrientation(LinearLayout.VERTICAL);

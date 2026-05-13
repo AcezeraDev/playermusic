@@ -11,6 +11,8 @@ PlayerMusic e um player Android nativo para tocar musicas ja baixadas no aparelh
 - Playback em segundo plano com foreground service.
 - Notificacao com controles de anterior, tocar/pausar e proxima.
 - Interface escura, responsiva e feita sem dependencias externas.
+- Player redesenhado com capa/placeholder, resumo da biblioteca e destaque da musica atual.
+- Listas com cartoes mais espacados e estado visual para a faixa em reproducao.
 
 ## APK
 
@@ -18,20 +20,18 @@ Depois do build, o APK fica em:
 
 `release/PlayerMusic.apk`
 
-Download direto pela GitHub Release:
-
-https://github.com/AcezeraDev/playermusic/releases/download/v1.0.0/PlayerMusic.apk
+Versao atual: `1.1.0`
 
 SHA-256 do APK enviado neste repositorio:
 
-`11EC77C5755F9813A3CD13EE94E522EAF5C1F3F8B29CF0D22D88E5A181D4C7B5`
+`2F5CA96DD590B7B5CF75E5AE4CAD31C46E0E4BFA237647B476760143EE773D4D`
 
 ## Build local
 
 Abra no Android Studio ou rode:
 
 ```powershell
-$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:JAVA_HOME='<caminho do JBR ou JDK 17+>'
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:assembleRelease
 ```
