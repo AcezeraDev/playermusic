@@ -119,6 +119,13 @@ public class MainActivity extends Activity {
     private TextView librarySummary;
     private TextView durationSummary;
     private TextView playlistSummary;
+    private TextView heroTitle;
+    private TextView heroSubtitle;
+    private TextView heroMetric;
+    private TextView heroPrimaryAction;
+    private TextView heroSecondaryAction;
+    private TextView sectionTitle;
+    private TextView sectionSubtitle;
     private ImageView nowArtwork;
     private TextView nowArtInitial;
     private TextView nowTitle;
@@ -337,19 +344,19 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         FrameLayout shell = new FrameLayout(this);
-        shell.setBackgroundColor(BG);
+        shell.setBackground(appBackground());
         shell.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
+        root.setBackgroundColor(Color.TRANSPARENT);
         root.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
         shell.addView(root, new FrameLayout.LayoutParams(-1, -1));
         setContentView(shell);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(20), dp(18), dp(20), dp(10));
+        header.setPadding(dp(18), dp(16), dp(18), dp(10));
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
@@ -360,9 +367,9 @@ public class MainActivity extends Activity {
         titleBlock.setOrientation(LinearLayout.VERTICAL);
         titleRow.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        TextView title = text("PlayerMusic", 29, TEXT, Typeface.BOLD);
+        TextView title = text("PlayerMusic", 30, TEXT, Typeface.BOLD);
         titleBlock.addView(title);
-        subtitleView = text("Biblioteca local pronta para tocar", 14, MUTED, Typeface.NORMAL);
+        subtitleView = text("Musica local, offline e sem complicacao", 13, MUTED, Typeface.NORMAL);
         titleBlock.addView(subtitleView);
 
         themeModeButton = iconButton(darkMode ? R.drawable.ic_light_mode : R.drawable.ic_dark_mode, darkMode ? "Ativar modo claro" : "Ativar modo escuro", SURFACE_ALT, TEXT, dp(42));
@@ -393,10 +400,12 @@ public class MainActivity extends Activity {
         permissionButton.setOnClickListener(view -> requestLibraryPermission());
         titleRow.addView(permissionButton, new LinearLayout.LayoutParams(-2, dp(42)));
 
+        header.addView(buildHeroPanel(), heroParams());
+
         LinearLayout summaryRow = new LinearLayout(this);
         summaryRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(-1, dp(38));
-        summaryParams.setMargins(0, dp(14), 0, 0);
+        summaryParams.setMargins(0, dp(12), 0, 0);
         header.addView(summaryRow, summaryParams);
         librarySummary = statPill("0 musicas", ACCENT);
         durationSummary = statPill("0 min", BLUE);
@@ -436,11 +445,13 @@ public class MainActivity extends Activity {
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(tabs, new LinearLayout.LayoutParams(-1, dp(42)));
+        tabs.setPadding(dp(3), dp(3), dp(3), dp(3));
+        tabs.setBackground(rounded(alphaBlend(SURFACE_ALT, ACCENT, darkMode ? 4 : 2), dp(23), 1, BORDER));
+        header.addView(tabs, new LinearLayout.LayoutParams(-1, dp(48)));
         tabLibrary = tab("Musicas");
-        tabPlaylists = tab("Playlists");
+        tabPlaylists = tab("Listas");
         tabQueue = tab("Fila");
-        tabExtensions = tab("Extensoes");
+        tabExtensions = tab("Extras");
         tabs.addView(tabLibrary, tabParams());
         tabs.addView(tabPlaylists, tabParams());
         tabs.addView(tabQueue, tabParams());
@@ -465,6 +476,17 @@ public class MainActivity extends Activity {
             refreshCurrentView();
         });
 
+        LinearLayout sectionRow = new LinearLayout(this);
+        sectionRow.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(-1, -2);
+        sectionParams.setMargins(dp(2), dp(12), dp(2), dp(2));
+        header.addView(sectionRow, sectionParams);
+
+        sectionTitle = text("Biblioteca", 18, TEXT, Typeface.BOLD);
+        sectionRow.addView(sectionTitle, new LinearLayout.LayoutParams(-1, -2));
+        sectionSubtitle = text("Todas as musicas do aparelho", 12, MUTED, Typeface.NORMAL);
+        sectionRow.addView(sectionSubtitle, new LinearLayout.LayoutParams(-1, -2));
+
         FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         listView = new ListView(this);
@@ -473,19 +495,101 @@ public class MainActivity extends Activity {
         listView.setSelector(android.R.color.transparent);
         listView.setCacheColorHint(Color.TRANSPARENT);
         listView.setClipToPadding(false);
-        listView.setPadding(dp(14), dp(4), dp(14), dp(12));
+        listView.setPadding(dp(14), dp(6), dp(14), dp(18));
         content.addView(listView, new FrameLayout.LayoutParams(-1, -1));
 
-        emptyView = text("", 16, MUTED, Typeface.NORMAL);
+        emptyView = text("", 15, MUTED, Typeface.NORMAL);
         emptyView.setGravity(Gravity.CENTER);
-        emptyView.setPadding(dp(28), dp(20), dp(28), dp(20));
-        content.addView(emptyView, new FrameLayout.LayoutParams(-1, -1));
+        emptyView.setPadding(dp(22), dp(20), dp(22), dp(20));
+        emptyView.setBackground(emptyStateBackground());
+        FrameLayout.LayoutParams emptyParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        emptyParams.setMargins(dp(22), 0, dp(22), 0);
+        content.addView(emptyView, emptyParams);
         listView.setEmptyView(emptyView);
 
         buildPlayer(root);
         buildExpandedPlayer(shell);
         refreshTabs();
         updateLibrarySummary();
+    }
+
+    private LinearLayout buildHeroPanel() {
+        LinearLayout hero = new LinearLayout(this);
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(16), dp(14), dp(14), dp(14));
+        hero.setBackground(heroBackground());
+
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        hero.addView(copy, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView eyebrow = text("PLAYERMUSIC", 11, ACCENT, Typeface.BOLD);
+        eyebrow.setSingleLine(true);
+        copy.addView(eyebrow, new LinearLayout.LayoutParams(-1, -2));
+
+        heroTitle = text("Sua biblioteca", 22, TEXT, Typeface.BOLD);
+        heroTitle.setSingleLine(true);
+        heroTitle.setEllipsize(TextUtils.TruncateAt.END);
+        copy.addView(heroTitle, new LinearLayout.LayoutParams(-1, -2));
+
+        heroSubtitle = text("Tudo pronto para tocar offline.", 13, MUTED, Typeface.NORMAL);
+        heroSubtitle.setMaxLines(2);
+        heroSubtitle.setEllipsize(TextUtils.TruncateAt.END);
+        copy.addView(heroSubtitle, new LinearLayout.LayoutParams(-1, -2));
+
+        heroMetric = text("0 musicas", 12, TEXT, Typeface.BOLD);
+        heroMetric.setSingleLine(true);
+        heroMetric.setEllipsize(TextUtils.TruncateAt.END);
+        heroMetric.setPadding(dp(10), 0, dp(10), 0);
+        heroMetric.setBackground(rounded(alphaColor(ACCENT, darkMode ? 34 : 22), dp(14), 1, alphaColor(ACCENT, darkMode ? 78 : 58)));
+        LinearLayout.LayoutParams metricParams = new LinearLayout.LayoutParams(-2, dp(30));
+        metricParams.setMargins(0, dp(10), 0, 0);
+        copy.addView(heroMetric, metricParams);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setGravity(Gravity.CENTER);
+        hero.addView(actions, new LinearLayout.LayoutParams(dp(108), -2));
+
+        heroPrimaryAction = heroAction("Tocar", ACCENT, true, view -> quickPlayAll());
+        actions.addView(heroPrimaryAction, new LinearLayout.LayoutParams(-1, dp(38)));
+
+        heroSecondaryAction = heroAction("Baixar", BLUE, false, view -> showImportLinkDialog());
+        LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(-1, dp(34));
+        secondParams.setMargins(0, dp(8), 0, 0);
+        actions.addView(heroSecondaryAction, secondParams);
+
+        return hero;
+    }
+
+    private TextView heroAction(String label, int tint, boolean primary, View.OnClickListener listener) {
+        TextView action = text(label, 12, primary ? ON_ACCENT : tint, Typeface.BOLD);
+        action.setGravity(Gravity.CENTER);
+        action.setSingleLine(true);
+        action.setEllipsize(TextUtils.TruncateAt.END);
+        action.setBackground(rounded(primary ? tint : alphaColor(tint, darkMode ? 30 : 18), dp(19), primary ? 0 : 1, alphaColor(tint, darkMode ? 92 : 70)));
+        action.setClickable(true);
+        action.setOnClickListener(listener);
+        attachPressAnimation(action);
+        return action;
+    }
+
+    private LinearLayout.LayoutParams heroParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(14), 0, 0);
+        return params;
+    }
+
+    private void quickPlayAll() {
+        if (allTracks.isEmpty()) {
+            if (hasLibraryPermission()) {
+                toast("Nenhuma musica encontrada");
+            } else {
+                requestLibraryPermission();
+            }
+            return;
+        }
+        playFrom(allTracks, 0);
     }
 
     private void buildPlayer(LinearLayout root) {
@@ -506,6 +610,13 @@ public class MainActivity extends Activity {
             return false;
         });
         root.addView(panel, new LinearLayout.LayoutParams(-1, -2));
+
+        View handle = new View(this);
+        handle.setBackground(rounded(alphaColor(TEXT, darkMode ? 70 : 90), dp(2), 0, 0));
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(dp(42), dp(4));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        handleParams.setMargins(0, 0, 0, dp(12));
+        panel.addView(handle, handleParams);
 
         LinearLayout nowRow = new LinearLayout(this);
         nowRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -641,7 +752,7 @@ public class MainActivity extends Activity {
 
     private void buildExpandedPlayer(FrameLayout shell) {
         expandedPlayer = new FrameLayout(this);
-        expandedPlayer.setBackgroundColor(BG);
+        expandedPlayer.setBackground(appBackground());
         expandedPlayer.setVisibility(View.GONE);
         expandedPlayer.setClickable(true);
         expandedPlayer.setOnTouchListener((view, event) -> {
@@ -655,10 +766,15 @@ public class MainActivity extends Activity {
         });
         shell.addView(expandedPlayer, new FrameLayout.LayoutParams(-1, -1));
 
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setClipToPadding(false);
+        expandedPlayer.addView(scrollView, new FrameLayout.LayoutParams(-1, -1));
+
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(18), dp(18), dp(18), dp(18));
-        expandedPlayer.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        scrollView.addView(page, new ScrollView.LayoutParams(-1, -2));
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -843,8 +959,9 @@ public class MainActivity extends Activity {
         visibleTracks.clear();
         listView.setAdapter(trackAdapter);
         trackAdapter.setTracks(visibleTracks);
-        subtitleView.setText("Permissao necessaria");
-        emptyView.setText("Permita acesso ao audio para tocar as musicas baixadas.");
+        setSection("Permissao necessaria", "Autorize o acesso ao audio local");
+        setHeroContext("Conecte sua biblioteca", "Permita acesso as musicas para o PlayerMusic organizar tudo automaticamente.", "Tocar", "Baixar");
+        emptyView.setText("Acesso necessario\nPermita o audio para tocar as musicas baixadas.");
     }
 
     private void refreshCurrentView() {
@@ -890,8 +1007,10 @@ public class MainActivity extends Activity {
             showTrackOptions(visibleTracks.get(position), null);
             return true;
         });
-        subtitleView.setText(allTracks.size() + " musicas no aparelho");
-        emptyView.setText(searchQuery().isEmpty() ? "Nenhuma musica baixada encontrada." : "Nenhum resultado para essa busca.");
+        setSection("Biblioteca", countLabel(allTracks.size(), "musica no aparelho", "musicas no aparelho"));
+        setHeroContext("Sua biblioteca", allTracks.isEmpty() ? "Adicione musicas ou baixe audio direto para ouvir offline." : "Escolha uma musica, toque tudo ou use a busca.", "Tocar", "Baixar");
+        emptyView.setText(searchQuery().isEmpty() ? "Biblioteca vazia\nBaixe audios ou permita acesso as suas musicas locais." : "Nada encontrado\nTente outro nome de musica, artista ou album.");
+        animateListChange();
     }
 
     private void showPlaylists() {
@@ -915,8 +1034,10 @@ public class MainActivity extends Activity {
             showPlaylistOptions(playlists.get(position));
             return true;
         });
-        subtitleView.setText(playlists.size() + " playlists");
-        emptyView.setText("Crie uma playlist para organizar suas musicas.");
+        setSection("Playlists", countLabel(playlists.size(), "lista criada", "listas criadas"));
+        setHeroContext("Organize seu som", "Monte colecoes para treinos, estudos, festas ou favoritos.", "Nova lista", "Favoritos");
+        emptyView.setText("Nenhuma playlist ainda\nCrie uma lista para separar suas musicas por clima.");
+        animateListChange();
     }
 
     private void showPlaylistTracks(Playlist playlist) {
@@ -935,8 +1056,10 @@ public class MainActivity extends Activity {
             showTrackOptions(visibleTracks.get(position), playlist);
             return true;
         });
-        subtitleView.setText(playlist.name + " - " + resolved.size() + " musicas");
-        emptyView.setText(searchQuery().isEmpty() ? "Playlist vazia." : "Nenhuma musica nessa playlist para a busca.");
+        setSection(playlist.name, countLabel(resolved.size(), "musica na playlist", "musicas na playlist"));
+        setHeroContext(playlist.name, "Playlist pronta para tocar em sequencia.", "Tocar", "Buscar");
+        emptyView.setText(searchQuery().isEmpty() ? "Playlist vazia\nAdicione musicas pelo menu de cada faixa." : "Nada encontrado\nEssa playlist nao tem resultado para a busca.");
+        animateListChange();
     }
 
     private void showQueue() {
@@ -958,8 +1081,10 @@ public class MainActivity extends Activity {
             showTrackOptions(visibleTracks.get(position), null);
             return true;
         });
-        subtitleView.setText(queue.size() + " faixas na fila");
-        emptyView.setText("A fila aparece quando uma musica comeca a tocar.");
+        setSection("Fila de reproducao", countLabel(queue.size(), "faixa preparada", "faixas preparadas"));
+        setHeroContext("Sua fila", queue.isEmpty() ? "Toque uma musica para montar uma fila automaticamente." : "Gerencie o que vem a seguir.", "Tocar", "Historico");
+        emptyView.setText("Fila vazia\nComece uma musica para ver a sequencia aqui.");
+        animateListChange();
     }
 
     private void showExtensions() {
@@ -975,8 +1100,10 @@ public class MainActivity extends Activity {
         extensionAdapter.notifyDataSetChanged();
         listView.setOnItemClickListener((parent, view, position, id) -> handleExtensionAction(position));
         listView.setOnItemLongClickListener(null);
-        subtitleView.setText("Extensoes, offline e ferramentas");
+        setSection("Extras", "Downloads, equalizador e ferramentas");
+        setHeroContext("Central de ferramentas", "Baixe audio, ajuste o som e abra seus recursos profissionais.", "Baixar", "Historico");
         emptyView.setText("");
+        animateListChange();
     }
 
     private void handleExtensionAction(int position) {
@@ -1010,6 +1137,76 @@ public class MainActivity extends Activity {
         } else {
             requestLibraryPermission();
         }
+    }
+
+    private void setSection(String title, String subtitle) {
+        subtitleView.setText(subtitle);
+        if (sectionTitle != null) {
+            sectionTitle.setText(title);
+        }
+        if (sectionSubtitle != null) {
+            sectionSubtitle.setText(subtitle);
+        }
+    }
+
+    private void setHeroContext(String title, String subtitle, String primaryLabel, String secondaryLabel) {
+        if (heroTitle != null) {
+            heroTitle.setText(title);
+        }
+        if (heroSubtitle != null) {
+            heroSubtitle.setText(subtitle);
+        }
+        if (heroPrimaryAction != null) {
+            heroPrimaryAction.setText(primaryLabel);
+            heroPrimaryAction.setOnClickListener(view -> handleHeroAction(primaryLabel));
+        }
+        if (heroSecondaryAction != null) {
+            heroSecondaryAction.setText(secondaryLabel);
+            heroSecondaryAction.setOnClickListener(view -> handleHeroAction(secondaryLabel));
+        }
+    }
+
+    private void handleHeroAction(String label) {
+        if ("Nova lista".equals(label)) {
+            showCreatePlaylistDialog(null);
+        } else if ("Baixar".equals(label)) {
+            showImportLinkDialog();
+        } else if ("Historico".equals(label)) {
+            showHistoryDialog();
+        } else if ("Buscar".equals(label)) {
+            searchInput.setVisibility(View.VISIBLE);
+            searchInput.requestFocus();
+        } else if ("Favoritos".equals(label)) {
+            Playlist favorites = findPlaylist(Playlist.FAVORITES_ID);
+            if (favorites != null) {
+                showPlaylistTracks(favorites);
+            }
+        } else if ("Tocar".equals(label)) {
+            if (currentTab == TAB_QUEUE && playbackService != null && playbackService.hasTrack()) {
+                playbackService.toggle();
+            } else if (!visibleTracks.isEmpty() && currentTab != TAB_PLAYLISTS) {
+                playFrom(visibleTracks, 0);
+            } else if (!visibleTracks.isEmpty() && openPlaylist != null) {
+                playFrom(visibleTracks, 0);
+            } else {
+                quickPlayAll();
+            }
+        }
+    }
+
+    private void animateListChange() {
+        if (listView == null) {
+            return;
+        }
+        listView.animate().cancel();
+        listView.setAlpha(0.72f);
+        listView.setTranslationY(dp(8));
+        listView.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
     }
 
     private void showImportLinkDialog() {
@@ -2376,6 +2573,9 @@ public class MainActivity extends Activity {
         librarySummary.setText(countLabel(allTracks.size(), "musica", "musicas"));
         durationSummary.setText(formatLibraryDuration(totalDuration));
         playlistSummary.setText(countLabel(playlistCount, "playlist", "playlists"));
+        if (heroMetric != null) {
+            heroMetric.setText(countLabel(allTracks.size(), "musica", "musicas") + " - " + formatLibraryDuration(totalDuration));
+        }
     }
 
     private String countLabel(int count, String singular, String plural) {
@@ -2509,7 +2709,7 @@ public class MainActivity extends Activity {
         pill.setSingleLine(true);
         pill.setEllipsize(TextUtils.TruncateAt.END);
         pill.setPadding(dp(8), 0, dp(8), 0);
-        pill.setBackground(rounded(alphaColor(tint, 36), dp(15), 1, alphaColor(tint, 86)));
+        pill.setBackground(rounded(alphaBlend(SURFACE, tint, darkMode ? 14 : 6), dp(15), 1, alphaColor(tint, darkMode ? 88 : 58)));
         return pill;
     }
 
@@ -2527,7 +2727,8 @@ public class MainActivity extends Activity {
 
     private void styleTab(TextView tab, boolean selected) {
         tab.setTextColor(selected ? ON_ACCENT : MUTED);
-        tab.setBackground(rounded(selected ? ACCENT : SURFACE_ALT, dp(21), selected ? 0 : 1, selected ? 0 : BORDER));
+        tab.setBackground(rounded(selected ? ACCENT : Color.TRANSPARENT, dp(20), 0, 0));
+        tab.animate().scaleX(selected ? 1.02f : 1f).scaleY(selected ? 1.02f : 1f).setDuration(160).start();
     }
 
     private TextView text(String value, int sp, int color, int style) {
@@ -2617,6 +2818,33 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    private GradientDrawable appBackground() {
+        int[] colors = darkMode
+                ? new int[] { 0xFF07100D, 0xFF091018, 0xFF120E18 }
+                : new int[] { 0xFFF2FBF8, 0xFFF7F9FC, 0xFFFFF8EF };
+        return new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+    }
+
+    private GradientDrawable heroBackground() {
+        int[] colors = darkMode
+                ? new int[] { 0xFF13231F, 0xFF171E2A, 0xFF2A2027 }
+                : new int[] { 0xFFFFFFFF, 0xFFE8F7F1, 0xFFFFF2E4 };
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        drawable.setCornerRadius(dp(22));
+        drawable.setStroke(dp(1), alphaColor(ACCENT, darkMode ? 70 : 42));
+        return drawable;
+    }
+
+    private GradientDrawable emptyStateBackground() {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] {
+                alphaBlend(SURFACE, BLUE, darkMode ? 8 : 4),
+                alphaBlend(SURFACE, ACCENT, darkMode ? 8 : 4)
+        });
+        drawable.setCornerRadius(dp(18));
+        drawable.setStroke(dp(1), BORDER);
+        return drawable;
+    }
+
     private GradientDrawable playerBackground() {
         int[] colors = darkMode
                 ? new int[] { 0xFF151B20, 0xFF202734, 0xFF211C25 }
@@ -2638,9 +2866,12 @@ public class MainActivity extends Activity {
     }
 
     private GradientDrawable rowBackground(boolean active) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(active ? ACTIVE_ROW : SURFACE);
-        drawable.setCornerRadius(dp(10));
+        int fill = active ? ACTIVE_ROW : alphaBlend(SURFACE, BLUE, darkMode ? 3 : 1);
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] {
+                fill,
+                active ? alphaBlend(fill, ACCENT, darkMode ? 12 : 5) : SURFACE
+        });
+        drawable.setCornerRadius(dp(16));
         drawable.setStroke(dp(1), active ? ACCENT : BORDER);
         return drawable;
     }
@@ -2651,6 +2882,16 @@ public class MainActivity extends Activity {
         drawable.setColor(fill);
         drawable.setCornerRadius(dp(14));
         drawable.setStroke(dp(1), active ? alphaColor(tint, darkMode ? 120 : 96) : BORDER);
+        return drawable;
+    }
+
+    private GradientDrawable playlistRowBackground() {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] {
+                alphaBlend(SURFACE, WARM, darkMode ? 10 : 5),
+                alphaBlend(SURFACE, ACCENT, darkMode ? 5 : 2)
+        });
+        drawable.setCornerRadius(dp(16));
+        drawable.setStroke(dp(1), alphaColor(WARM, darkMode ? 78 : 54));
         return drawable;
     }
 
@@ -2721,6 +2962,7 @@ public class MainActivity extends Activity {
 
     private class TrackRow {
         final LinearLayout root;
+        final ImageView artwork;
         final TextView badge;
         final TextView title;
         final TextView subtitle;
@@ -2730,14 +2972,23 @@ public class MainActivity extends Activity {
         TrackRow() {
             root = new LinearLayout(MainActivity.this);
             root.setGravity(Gravity.CENTER_VERTICAL);
-            root.setPadding(dp(12), dp(8), dp(8), dp(8));
+            root.setPadding(dp(12), dp(10), dp(8), dp(10));
             root.setBackground(rowBackground(false));
-            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(78)));
+            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(90)));
+            attachPressAnimation(root);
+
+            FrameLayout cover = new FrameLayout(MainActivity.this);
+            cover.setBackground(rounded(SURFACE_RAISED, dp(16), 1, BORDER));
+            root.addView(cover, new LinearLayout.LayoutParams(dp(58), dp(58)));
+
+            artwork = new ImageView(MainActivity.this);
+            artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            artwork.setVisibility(View.GONE);
+            cover.addView(artwork, new FrameLayout.LayoutParams(-1, -1));
 
             badge = text("M", 18, BADGE_TEXT, Typeface.BOLD);
             badge.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(52), dp(52));
-            root.addView(badge, badgeParams);
+            cover.addView(badge, new FrameLayout.LayoutParams(-1, -1));
 
             LinearLayout labels = new LinearLayout(MainActivity.this);
             labels.setOrientation(LinearLayout.VERTICAL);
@@ -2755,7 +3006,9 @@ public class MainActivity extends Activity {
             labels.addView(subtitle);
 
             duration = text("", 12, MUTED, Typeface.BOLD);
-            root.addView(duration);
+            duration.setGravity(Gravity.CENTER);
+            duration.setPadding(dp(8), 0, dp(8), 0);
+            root.addView(duration, new LinearLayout.LayoutParams(-2, dp(28)));
 
             more = iconButton(R.drawable.ic_more_vert, "Opcoes", Color.TRANSPARENT, MUTED, dp(42));
             more.setFocusable(false);
@@ -2770,8 +3023,11 @@ public class MainActivity extends Activity {
             subtitle.setTextColor(active ? TEXT : MUTED);
             duration.setText(track.formattedDuration());
             duration.setTextColor(active ? ACCENT : MUTED);
-            badge.setText(active && playbackService != null && playbackService.isPlaying() ? ">" : trackInitial(track));
-            badge.setBackground(albumBadge(track.albumId));
+            duration.setBackground(rounded(alphaColor(active ? ACCENT : MUTED, active ? 36 : (darkMode ? 22 : 14)), dp(13), 1, alphaColor(active ? ACCENT : MUTED, active ? 90 : (darkMode ? 44 : 30))));
+            setArtwork(artwork, badge, track);
+            if (active && playbackService != null && playbackService.isPlaying() && badge.getVisibility() == View.VISIBLE) {
+                badge.setText(">");
+            }
             root.setBackground(rowBackground(active));
             more.setColorFilter(active ? ACCENT : MUTED);
             more.setOnClickListener(view -> showTrackOptions(track, currentTab == TAB_PLAYLISTS ? openPlaylist : null));
@@ -2921,6 +3177,7 @@ public class MainActivity extends Activity {
             root.setPadding(dp(14), dp(10), dp(12), dp(10));
             root.setBackground(extensionRowBackground(false, ACCENT));
             root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(100)));
+            attachPressAnimation(root);
 
             badge = text("E", 18, BADGE_TEXT, Typeface.BOLD);
             badge.setGravity(Gravity.CENTER);
@@ -3010,13 +3267,14 @@ public class MainActivity extends Activity {
         PlaylistRow() {
             root = new LinearLayout(MainActivity.this);
             root.setGravity(Gravity.CENTER_VERTICAL);
-            root.setPadding(dp(12), dp(8), dp(8), dp(8));
-            root.setBackground(rowBackground(false));
-            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(80)));
+            root.setPadding(dp(14), dp(10), dp(8), dp(10));
+            root.setBackground(playlistRowBackground());
+            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(92)));
+            attachPressAnimation(root);
 
             badge = text("", 18, BADGE_TEXT, Typeface.BOLD);
             badge.setGravity(Gravity.CENTER);
-            badge.setBackground(rounded(WARM, dp(10), 0, 0));
+            badge.setBackground(rounded(WARM, dp(16), 0, 0));
             badge.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_playlist, 0, 0, 0);
             root.addView(badge, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
@@ -3040,7 +3298,8 @@ public class MainActivity extends Activity {
 
         void bind(Playlist playlist) {
             title.setText(playlist.name);
-            count.setText(playlist.trackUris.size() + " musicas");
+            count.setText(countLabel(playlist.trackUris.size(), "musica salva", "musicas salvas"));
+            root.setBackground(playlistRowBackground());
             more.setOnClickListener(view -> showPlaylistOptions(playlist));
         }
     }
