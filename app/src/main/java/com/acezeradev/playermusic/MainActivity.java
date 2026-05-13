@@ -7,6 +7,7 @@ import android.content.ContentUris;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -50,6 +51,10 @@ public class MainActivity extends Activity {
     private static final int TAB_LIBRARY = 0;
     private static final int TAB_PLAYLISTS = 1;
     private static final int TAB_QUEUE = 2;
+    private static final int TAB_EXTENSIONS = 3;
+    private static final String EXTENSION_PREFS = "player_music_extensions";
+    private static final String KEY_CUSTOM_EXTENSION_PACKAGE = "custom_extension_package";
+    private static final String SNAPTUBE_PACKAGE = "com.snaptube.premium";
 
     private static final int BG = 0xFF090B10;
     private static final int SURFACE = 0xFF171A21;
@@ -65,12 +70,14 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final MusicRepository repository = new MusicRepository();
     private PlaylistStore playlistStore;
+    private SharedPreferences extensionPrefs;
 
     private TextView subtitleView;
     private TextView emptyView;
     private TextView tabLibrary;
     private TextView tabPlaylists;
     private TextView tabQueue;
+    private TextView tabExtensions;
     private TextView librarySummary;
     private TextView durationSummary;
     private TextView playlistSummary;
@@ -96,6 +103,7 @@ public class MainActivity extends Activity {
     private final ArrayList<Track> visibleTracks = new ArrayList<>();
     private final TrackAdapter trackAdapter = new TrackAdapter();
     private final PlaylistAdapter playlistAdapter = new PlaylistAdapter();
+    private final ExtensionAdapter extensionAdapter = new ExtensionAdapter();
 
     private MusicPlaybackService playbackService;
     private boolean bound = false;
@@ -141,6 +149,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         playlistStore = new PlaylistStore(this);
+        extensionPrefs = getSharedPreferences(EXTENSION_PREFS, MODE_PRIVATE);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         buildUi();
@@ -166,6 +175,14 @@ public class MainActivity extends Activity {
             bound = false;
         }
         super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (currentTab == TAB_EXTENSIONS) {
+            extensionAdapter.notifyDataSetChanged();
+        }
     }
 
     @Override
@@ -276,9 +293,11 @@ public class MainActivity extends Activity {
         tabLibrary = tab("Musicas");
         tabPlaylists = tab("Playlists");
         tabQueue = tab("Fila");
+        tabExtensions = tab("Extensoes");
         tabs.addView(tabLibrary, tabParams());
         tabs.addView(tabPlaylists, tabParams());
         tabs.addView(tabQueue, tabParams());
+        tabs.addView(tabExtensions, tabParams());
         tabLibrary.setOnClickListener(view -> {
             openPlaylist = null;
             currentTab = TAB_LIBRARY;
@@ -291,6 +310,11 @@ public class MainActivity extends Activity {
         tabQueue.setOnClickListener(view -> {
             openPlaylist = null;
             currentTab = TAB_QUEUE;
+            refreshCurrentView();
+        });
+        tabExtensions.setOnClickListener(view -> {
+            openPlaylist = null;
+            currentTab = TAB_EXTENSIONS;
             refreshCurrentView();
         });
 
@@ -484,6 +508,10 @@ public class MainActivity extends Activity {
     }
 
     private void refreshCurrentView() {
+        if (currentTab == TAB_EXTENSIONS) {
+            showExtensions();
+            return;
+        }
         if (!hasLibraryPermission()) {
             showPermissionState();
             return;
@@ -502,8 +530,10 @@ public class MainActivity extends Activity {
             } else {
                 showPlaylistTracks(openPlaylist);
             }
-        } else {
+        } else if (currentTab == TAB_QUEUE) {
             showQueue();
+        } else {
+            showExtensions();
         }
     }
 
@@ -530,6 +560,8 @@ public class MainActivity extends Activity {
         refreshTabs();
         searchInput.setVisibility(View.GONE);
         addPlaylistButton.setVisibility(View.VISIBLE);
+        addPlaylistButton.setContentDescription("Nova playlist");
+        addPlaylistButton.setOnClickListener(view -> showCreatePlaylistDialog(null));
         backPlaylistButton.setVisibility(View.GONE);
         ArrayList<Playlist> playlists = playlistStore.getPlaylists();
         updateLibrarySummary();
@@ -588,6 +620,113 @@ public class MainActivity extends Activity {
         });
         subtitleView.setText(queue.size() + " faixas na fila");
         emptyView.setText("A fila aparece quando uma musica comeca a tocar.");
+    }
+
+    private void showExtensions() {
+        currentTab = TAB_EXTENSIONS;
+        openPlaylist = null;
+        refreshTabs();
+        searchInput.setVisibility(View.GONE);
+        addPlaylistButton.setVisibility(View.VISIBLE);
+        addPlaylistButton.setContentDescription("Cadastrar extensao");
+        addPlaylistButton.setOnClickListener(view -> showExtensionPackageDialog());
+        backPlaylistButton.setVisibility(View.GONE);
+        listView.setAdapter(extensionAdapter);
+        extensionAdapter.notifyDataSetChanged();
+        listView.setOnItemClickListener((parent, view, position, id) -> handleExtensionAction(position));
+        listView.setOnItemLongClickListener(null);
+        subtitleView.setText("Extensoes e importacao local");
+        emptyView.setText("");
+    }
+
+    private void handleExtensionAction(int position) {
+        if (position == 0) {
+            openExternalExtension(SNAPTUBE_PACKAGE, "Snaptube");
+        } else if (position == 1) {
+            String packageName = customExtensionPackage();
+            if (packageName.isEmpty() || !isPackageAvailable(packageName)) {
+                showExtensionPackageDialog();
+            } else {
+                openExternalExtension(packageName, packageName);
+            }
+        } else if (position == 2) {
+            if (hasLibraryPermission()) {
+                loadLibrary();
+                toast("Biblioteca atualizando");
+            } else {
+                requestLibraryPermission();
+            }
+        } else if (position == 3) {
+            showExtensionSafetyDialog();
+        }
+    }
+
+    private void openExternalExtension(String packageName, String label) {
+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+        if (launchIntent == null) {
+            toast(label + " nao encontrado");
+            return;
+        }
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(launchIntent);
+    }
+
+    private void showExtensionPackageDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(SNAPTUBE_PACKAGE);
+        input.setText(customExtensionPackage());
+        input.setSelectAllOnFocus(true);
+        input.setTextColor(TEXT);
+        input.setHintTextColor(MUTED);
+        input.setPadding(dp(16), dp(8), dp(16), dp(8));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Cadastrar extensao")
+                .setView(input)
+                .setPositiveButton("Salvar", null)
+                .setNegativeButton("Cancelar", null)
+                .setNeutralButton("Limpar", null)
+                .create();
+        dialog.setOnShowListener(view -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+                String packageName = input.getText().toString().trim();
+                if (packageName.isEmpty()) {
+                    input.setError("Digite o pacote Android");
+                    return;
+                }
+                extensionPrefs.edit().putString(KEY_CUSTOM_EXTENSION_PACKAGE, packageName).apply();
+                dialog.dismiss();
+                showExtensions();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button -> {
+                extensionPrefs.edit().remove(KEY_CUSTOM_EXTENSION_PACKAGE).apply();
+                dialog.dismiss();
+                showExtensions();
+            });
+        });
+        dialog.show();
+    }
+
+    private void showExtensionSafetyDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Uso responsavel")
+                .setMessage("Use extensoes externas apenas para baixar ou importar audio que voce tem direito de usar. O PlayerMusic atualiza e toca os arquivos locais encontrados no aparelho.")
+                .setPositiveButton("Entendi", null)
+                .show();
+    }
+
+    private String customExtensionPackage() {
+        if (extensionPrefs == null) {
+            return "";
+        }
+        return extensionPrefs.getString(KEY_CUSTOM_EXTENSION_PACKAGE, "");
+    }
+
+    private boolean isPackageAvailable(String packageName) {
+        if (packageName == null || packageName.trim().isEmpty()) {
+            return false;
+        }
+        return getPackageManager().getLaunchIntentForPackage(packageName) != null;
     }
 
     private void playFrom(ArrayList<Track> source, int index) {
@@ -927,6 +1066,7 @@ public class MainActivity extends Activity {
         styleTab(tabLibrary, currentTab == TAB_LIBRARY);
         styleTab(tabPlaylists, currentTab == TAB_PLAYLISTS);
         styleTab(tabQueue, currentTab == TAB_QUEUE);
+        styleTab(tabExtensions, currentTab == TAB_EXTENSIONS);
     }
 
     private void startTicker() {
@@ -1150,6 +1290,146 @@ public class MainActivity extends Activity {
         GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] { color, 0xFFFFFFFF });
         drawable.setCornerRadius(dp(10));
         return drawable;
+    }
+
+    private ArrayList<ExtensionItem> extensionItems() {
+        ArrayList<ExtensionItem> items = new ArrayList<>();
+        boolean snaptubeReady = isPackageAvailable(SNAPTUBE_PACKAGE);
+        String customPackage = customExtensionPackage();
+        boolean customReady = isPackageAvailable(customPackage);
+        items.add(new ExtensionItem(
+                "S",
+                "Snaptube",
+                snaptubeReady ? "Instalado - abrir app externo" : "Nao instalado neste aparelho",
+                snaptubeReady ? "Abrir" : "Ausente",
+                ACCENT,
+                snaptubeReady
+        ));
+        items.add(new ExtensionItem(
+                customPackage.isEmpty() ? "+" : "E",
+                customPackage.isEmpty() ? "Adicionar extensao" : customPackage,
+                customPackage.isEmpty() ? "Cadastre o pacote Android da extensao" : (customReady ? "Instalada - abrir app externo" : "Pacote salvo, mas nao encontrado"),
+                customPackage.isEmpty() ? "Cadastrar" : (customReady ? "Abrir" : "Editar"),
+                BLUE,
+                customPackage.isEmpty() || customReady
+        ));
+        items.add(new ExtensionItem(
+                "R",
+                "Atualizar biblioteca",
+                "Recarrega as musicas locais depois de baixar arquivos",
+                "Atualizar",
+                WARM,
+                true
+        ));
+        items.add(new ExtensionItem(
+                "!",
+                "Uso responsavel",
+                "Importe apenas audio que voce tem direito de usar",
+                "Ver",
+                ROSE,
+                true
+        ));
+        return items;
+    }
+
+    private static class ExtensionItem {
+        final String badge;
+        final String title;
+        final String subtitle;
+        final String action;
+        final int tint;
+        final boolean active;
+
+        ExtensionItem(String badge, String title, String subtitle, String action, int tint, boolean active) {
+            this.badge = badge;
+            this.title = title;
+            this.subtitle = subtitle;
+            this.action = action;
+            this.tint = tint;
+            this.active = active;
+        }
+    }
+
+    private class ExtensionAdapter extends BaseAdapter {
+        @Override
+        public int getCount() {
+            return extensionItems().size();
+        }
+
+        @Override
+        public ExtensionItem getItem(int position) {
+            return extensionItems().get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            ExtensionRow row;
+            if (convertView == null) {
+                row = new ExtensionRow();
+                convertView = row.root;
+                convertView.setTag(row);
+            } else {
+                row = (ExtensionRow) convertView.getTag();
+            }
+            row.bind(getItem(position));
+            return convertView;
+        }
+    }
+
+    private class ExtensionRow {
+        final LinearLayout root;
+        final TextView badge;
+        final TextView title;
+        final TextView subtitle;
+        final TextView action;
+
+        ExtensionRow() {
+            root = new LinearLayout(MainActivity.this);
+            root.setGravity(Gravity.CENTER_VERTICAL);
+            root.setPadding(dp(12), dp(8), dp(10), dp(8));
+            root.setBackground(rowBackground(false));
+            root.setLayoutParams(new AbsListView.LayoutParams(-1, dp(82)));
+
+            badge = text("E", 18, BG, Typeface.BOLD);
+            badge.setGravity(Gravity.CENTER);
+            root.addView(badge, new LinearLayout.LayoutParams(dp(52), dp(52)));
+
+            LinearLayout labels = new LinearLayout(MainActivity.this);
+            labels.setOrientation(LinearLayout.VERTICAL);
+            labels.setPadding(dp(12), 0, dp(8), 0);
+            root.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
+
+            title = text("", 16, TEXT, Typeface.BOLD);
+            title.setSingleLine(true);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            labels.addView(title);
+
+            subtitle = text("", 13, MUTED, Typeface.NORMAL);
+            subtitle.setSingleLine(true);
+            subtitle.setEllipsize(TextUtils.TruncateAt.END);
+            labels.addView(subtitle);
+
+            action = text("", 12, TEXT, Typeface.BOLD);
+            action.setGravity(Gravity.CENTER);
+            action.setPadding(dp(10), 0, dp(10), 0);
+            root.addView(action, new LinearLayout.LayoutParams(-2, dp(32)));
+        }
+
+        void bind(ExtensionItem item) {
+            badge.setText(item.badge);
+            badge.setBackground(rounded(item.tint, dp(10), 0, 0));
+            title.setText(item.title);
+            title.setTextColor(item.active ? TEXT : MUTED);
+            subtitle.setText(item.subtitle);
+            action.setText(item.action);
+            action.setBackground(rounded(alphaColor(item.tint, item.active ? 42 : 24), dp(16), 1, alphaColor(item.tint, item.active ? 110 : 60)));
+            root.setBackground(rowBackground(false));
+        }
     }
 
     private class PlaylistAdapter extends BaseAdapter {

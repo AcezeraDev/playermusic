@@ -5,5 +5,6 @@
     <color name="brand_surface_alt">#232836</color>
     <color name="brand_accent">#3DDB9A</color>
     <color name="brand_warm">#FFB86C</color>
+    <color name="icon_background">#081116</color>
 </resources>
 
