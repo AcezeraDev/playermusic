@@ -48,11 +48,15 @@ fun AlbumArtwork(
                 runCatching {
                     val retriever = MediaMetadataRetriever()
                     retriever.setDataSource(context, it.uri)
-                    val picture = retriever.embeddedPicture
-                    retriever.release()
-                    picture?.let { bytes ->
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val picture = if (it.isVideo) {
+                        retriever.getFrameAtTime(1_000_000)
+                    } else {
+                        retriever.embeddedPicture?.let { bytes ->
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        }
                     }
+                    retriever.release()
+                    picture
                 }.getOrNull()
             }
         }

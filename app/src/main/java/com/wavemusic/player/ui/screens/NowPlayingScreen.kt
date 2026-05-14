@@ -4,6 +4,8 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -78,6 +80,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,6 +125,7 @@ fun NowPlayingScreen(
     onRemoveFromQueue: (Music) -> Unit,
     onMoveQueueItem: (Int, Int) -> Unit,
     onClearQueue: () -> Unit,
+    onVideoSurfaceReady: (SurfaceHolder?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -224,18 +228,28 @@ fun NowPlayingScreen(
                         .height(96.dp)
                         .alpha(0.72f)
                 )
-                AlbumArtwork(
-                    music = music,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(320.dp)
-                        .graphicsLayer {
-                            scaleX = artworkScale
-                            scaleY = artworkScale
-                            rotationZ = artworkSway.value
-                        },
-                    cornerRadius = 36.dp
-                )
+                if (music.isVideo) {
+                    VideoSurface(
+                        onSurfaceReady = onVideoSurfaceReady,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .clip(RoundedCornerShape(36.dp))
+                    )
+                } else {
+                    AlbumArtwork(
+                        music = music,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .graphicsLayer {
+                                scaleX = artworkScale
+                                scaleY = artworkScale
+                                rotationZ = artworkSway.value
+                            },
+                        cornerRadius = 36.dp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(22.dp))
@@ -454,6 +468,33 @@ private fun TopBar(onBack: () -> Unit) {
         )
         Spacer(modifier = Modifier.size(48.dp))
     }
+}
+
+@Composable
+private fun VideoSurface(
+    onSurfaceReady: (SurfaceHolder?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier.background(WaveBackground),
+        factory = { context ->
+            SurfaceView(context).apply {
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        onSurfaceReady(holder)
+                    }
+
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                        onSurfaceReady(holder)
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        onSurfaceReady(null)
+                    }
+                })
+            }
+        }
+    )
 }
 
 @Composable

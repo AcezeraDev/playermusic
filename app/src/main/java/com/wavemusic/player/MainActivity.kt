@@ -9,6 +9,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Bundle
+import android.view.SurfaceHolder
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,15 +84,17 @@ private fun WaveMusicApp() {
     val userPreferences = remember { UserPreferences(context.applicationContext) }
     val libraryStorage = remember { LibraryStorage(context.applicationContext) }
     val playlistImageStore = remember { PlaylistImageStore(context.applicationContext) }
-    val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_AUDIO
+    val mediaPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VIDEO)
     } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
     var hasPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, audioPermission) == PackageManager.PERMISSION_GRANTED
+            mediaPermissions.all { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
         )
     }
     var hasNotificationPermission by remember {
@@ -113,8 +116,12 @@ private fun WaveMusicApp() {
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasPermission = granted }
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = {
+            hasPermission = mediaPermissions.all { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+        }
     )
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -153,6 +160,7 @@ private fun WaveMusicApp() {
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
     val notificationController = remember { WaveMusicNotificationController(context.applicationContext) }
     val mediaSession = remember { MediaSession(context.applicationContext, "WaveMusicSession") }
+    var videoSurfaceHolder by remember { mutableStateOf<SurfaceHolder?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     fun queueSongs(): List<Music> = queueIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
@@ -202,6 +210,7 @@ private fun WaveMusicApp() {
     fun playMusic(music: Music) {
         runCatching {
             mediaPlayer.reset()
+            mediaPlayer.setDisplay(if (music.isVideo) videoSurfaceHolder else null)
             mediaPlayer.setDataSource(context, music.uri)
             mediaPlayer.prepare()
             rebuildEqualizer()
@@ -213,6 +222,7 @@ private fun WaveMusicApp() {
             positionMs = 0L
             isPlaying = true
             mediaNotificationDismissed = false
+            if (music.isVideo) showNowPlaying = true
             recordPlay(music)
 
             if (crossfadeEnabled) {
@@ -231,6 +241,13 @@ private fun WaveMusicApp() {
                 "Não foi possível tocar esta música. Verifique se o arquivo ainda existe.",
                 Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    fun updateVideoSurface(holder: SurfaceHolder?) {
+        videoSurfaceHolder = holder
+        runCatching {
+            mediaPlayer.setDisplay(if (currentMusic?.isVideo == true) holder else null)
         }
     }
 
@@ -674,7 +691,8 @@ private fun WaveMusicApp() {
                 onAddToQueue = ::addToQueue,
                 onRemoveFromQueue = ::removeFromQueue,
                 onMoveQueueItem = ::moveQueueItem,
-                onClearQueue = ::clearQueue
+                onClearQueue = ::clearQueue,
+                onVideoSurfaceReady = ::updateVideoSurface
             )
         } else {
             Scaffold(
@@ -712,7 +730,7 @@ private fun WaveMusicApp() {
                             queueCount = queueIds.size,
                             isLoading = isLoadingSongs,
                             hasPermission = hasPermission,
-                            onRequestPermission = { permissionLauncher.launch(audioPermission) },
+                            onRequestPermission = { permissionLauncher.launch(mediaPermissions) },
                             onRefresh = ::reloadSongs,
                             onSongClick = ::playMusic,
                             onToggleLike = ::toggleLike,

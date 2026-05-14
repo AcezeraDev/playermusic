@@ -82,10 +82,11 @@ fun SearchScreen(
     val artistResults by remember(songs, normalizedQuery) {
         derivedStateOf {
             songs
+                .filterNot { it.isVideo }
                 .groupBy { it.artist.normalizedKey() }
                 .values
                 .mapNotNull { group ->
-                    val sorted = group.sortedBy { it.title.lowercase() }
+                    val sorted = group.sortedByDescending { it.dateAddedSeconds }
                     val first = sorted.firstOrNull() ?: return@mapNotNull null
                     ArtistResult(
                         name = first.artist,
@@ -100,10 +101,11 @@ fun SearchScreen(
     val albumResults by remember(songs, normalizedQuery) {
         derivedStateOf {
             songs
+                .filterNot { it.isVideo }
                 .groupBy { "${it.album.normalizedKey()}|${it.artist.normalizedKey()}" }
                 .values
                 .mapNotNull { group ->
-                    val sorted = group.sortedBy { it.title.lowercase() }
+                    val sorted = group.sortedByDescending { it.dateAddedSeconds }
                     val first = sorted.firstOrNull() ?: return@mapNotNull null
                     AlbumResult(
                         key = "${first.album.normalizedKey()}|${first.artist.normalizedKey()}",
@@ -124,22 +126,39 @@ fun SearchScreen(
     val songResults by remember(songs, normalizedQuery) {
         derivedStateOf {
             songs
+                .filterNot { it.isVideo }
                 .filter {
                     normalizedQuery.isBlank() ||
                         it.title.contains(normalizedQuery, ignoreCase = true) ||
                         it.artist.contains(normalizedQuery, ignoreCase = true) ||
                         it.album.contains(normalizedQuery, ignoreCase = true)
                 }
-                .sortedBy { it.title.lowercase() }
+                .sortedByDescending { it.dateAddedSeconds }
+        }
+    }
+
+    val videoResults by remember(songs, normalizedQuery) {
+        derivedStateOf {
+            songs
+                .filter { it.isVideo }
+                .filter {
+                    normalizedQuery.isBlank() ||
+                        it.title.contains(normalizedQuery, ignoreCase = true) ||
+                        it.artist.contains(normalizedQuery, ignoreCase = true) ||
+                        it.album.contains(normalizedQuery, ignoreCase = true) ||
+                        it.folder.contains(normalizedQuery, ignoreCase = true)
+                }
+                .sortedByDescending { it.dateAddedSeconds }
         }
     }
 
     val detailSongs = when (val selectedDetail = detail) {
         is SearchDetail.Artist -> artistResults.firstOrNull { it.name == selectedDetail.name }?.songs
-            ?: songs.filter { it.artist == selectedDetail.name }.sortedBy { it.title.lowercase() }
+            ?: songs.filter { !it.isVideo && it.artist == selectedDetail.name }.sortedByDescending { it.dateAddedSeconds }
         is SearchDetail.Album -> albumResults.firstOrNull { it.key == selectedDetail.key }?.songs
             ?: songs.filter { "${it.album.normalizedKey()}|${it.artist.normalizedKey()}" == selectedDetail.key }
-                .sortedBy { it.title.lowercase() }
+                .filterNot { it.isVideo }
+                .sortedByDescending { it.dateAddedSeconds }
         null -> emptyList()
     }
 
@@ -241,7 +260,10 @@ fun SearchScreen(
 
             when (filter) {
                 SearchFilter.All -> {
-                    val hasResults = songResults.isNotEmpty() || artistResults.isNotEmpty() || albumResults.isNotEmpty()
+                    val hasResults = songResults.isNotEmpty() ||
+                        videoResults.isNotEmpty() ||
+                        artistResults.isNotEmpty() ||
+                        albumResults.isNotEmpty()
                     if (!hasResults) {
                         item {
                             EmptyMusicScreen(
@@ -253,6 +275,23 @@ fun SearchScreen(
                         if (songResults.isNotEmpty()) {
                             item { SearchSectionTitle("Músicas", "${songResults.size} resultado(s)") }
                             items(songResults, key = { "song-${it.id}" }) { music ->
+                                SearchMusicCard(
+                                    music = music,
+                                    currentMusicId = currentMusicId,
+                                    likedIds = likedIds,
+                                    playlists = playlists,
+                                    queuedIds = queuedIds,
+                                    onSongClick = onSongClick,
+                                    onToggleLike = onToggleLike,
+                                    onAddToPlaylist = onAddToPlaylist,
+                                    onAddToQueue = onAddToQueue,
+                                    onRemoveFromQueue = onRemoveFromQueue
+                                )
+                            }
+                        }
+                        if (videoResults.isNotEmpty()) {
+                            item { SearchSectionTitle("Videos", "${videoResults.size} resultado(s)") }
+                            items(videoResults, key = { "video-${it.id}" }) { music ->
                                 SearchMusicCard(
                                     music = music,
                                     currentMusicId = currentMusicId,
@@ -302,6 +341,32 @@ fun SearchScreen(
                         }
                     } else {
                         items(songResults, key = { it.id }) { music ->
+                            SearchMusicCard(
+                                music = music,
+                                currentMusicId = currentMusicId,
+                                likedIds = likedIds,
+                                playlists = playlists,
+                                queuedIds = queuedIds,
+                                onSongClick = onSongClick,
+                                onToggleLike = onToggleLike,
+                                onAddToPlaylist = onAddToPlaylist,
+                                onAddToQueue = onAddToQueue,
+                                onRemoveFromQueue = onRemoveFromQueue
+                            )
+                        }
+                    }
+                }
+
+                SearchFilter.Video -> {
+                    if (videoResults.isEmpty()) {
+                        item {
+                            EmptyMusicScreen(
+                                title = "Nenhum video encontrado",
+                                message = "Tente buscar por outro nome de video."
+                            )
+                        }
+                    } else {
+                        items(videoResults, key = { it.id }) { music ->
                             SearchMusicCard(
                                 music = music,
                                 currentMusicId = currentMusicId,
@@ -570,6 +635,7 @@ private sealed class SearchDetail {
 private enum class SearchFilter(val label: String) {
     All("Tudo"),
     Song("Música"),
+    Video("Videos"),
     Artist("Artista"),
     Album("Álbum")
 }

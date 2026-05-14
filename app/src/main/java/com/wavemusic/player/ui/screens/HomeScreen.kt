@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,10 +23,16 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +53,11 @@ import com.wavemusic.player.ui.theme.WavePurple
 import com.wavemusic.player.ui.theme.WaveSurface
 import com.wavemusic.player.ui.theme.WaveTextPrimary
 import com.wavemusic.player.ui.theme.WaveTextSecondary
+
+private enum class HomeMediaFilter(val label: String) {
+    Music("Musicas"),
+    Video("Videos")
+}
 
 @Composable
 fun HomeScreen(
@@ -68,6 +80,14 @@ fun HomeScreen(
     queuedIds: Set<Long>,
     modifier: Modifier = Modifier
 ) {
+    var mediaFilter by rememberSaveable { mutableStateOf(HomeMediaFilter.Music) }
+    val audioItems = songs.filterNot { it.isVideo }
+    val videoItems = songs.filter { it.isVideo }
+    val visibleItems = when (mediaFilter) {
+        HomeMediaFilter.Music -> audioItems
+        HomeMediaFilter.Video -> videoItems
+    }
+
     if (!hasPermission) {
         PermissionRequestScreen(onRequestPermission = onRequestPermission, modifier = modifier)
         return
@@ -87,53 +107,73 @@ fun HomeScreen(
                     fontWeight = FontWeight.Black
                 )
                 Text(
-                    text = "Suas músicas baixadas, agora em neon",
+                    text = "Suas musicas e videos baixados, agora em neon",
                     color = WaveTextSecondary,
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
         }
 
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(HomeMediaFilter.entries, key = { it.name }) { item ->
+                    val count = if (item == HomeMediaFilter.Music) audioItems.size else videoItems.size
+                    FilterChip(
+                        selected = mediaFilter == item,
+                        onClick = { mediaFilter = item },
+                        label = { Text("${item.label} ($count)") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = WavePink.copy(alpha = 0.22f),
+                            selectedLabelColor = WaveTextPrimary,
+                            containerColor = WaveSurface.copy(alpha = 0.56f),
+                            labelColor = WaveTextSecondary
+                        )
+                    )
+                }
+            }
+        }
+
         if (isLoading) {
             item {
                 EmptyMusicScreen(
-                    title = "Carregando músicas",
-                    message = "Estamos lendo os áudios do dispositivo. Isso pode levar alguns segundos na primeira vez."
+                    title = "Carregando biblioteca",
+                    message = "Estamos lendo audios e videos do dispositivo."
                 )
             }
-        } else if (songs.isNotEmpty()) {
+        } else if (visibleItems.isNotEmpty()) {
             item {
                 FeaturedSongCard(
-                    music = songs.first(),
-                    count = songs.size,
-                    onClick = { onSongClick(songs.first()) }
+                    music = visibleItems.first(),
+                    count = visibleItems.size,
+                    onClick = { onSongClick(visibleItems.first()) }
                 )
             }
 
             item {
                 HomeStatsRow(
-                    songs = songs,
+                    songs = visibleItems,
                     likedCount = likedIds.size,
                     queueCount = queueCount,
                     totalListenMs = playbackStats.totalListenMs
                 )
             }
 
-            val recentSongs = recentIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }.take(5)
+            val recentSongs = recentIds
+                .mapNotNull { id -> songs.firstOrNull { it.id == id } }
+                .filter { it.isVideo == (mediaFilter == HomeMediaFilter.Video) }
+                .take(5)
             if (recentSongs.isNotEmpty()) {
-                item {
-                    SectionTitle("Continuar ouvindo", "Histórico recente")
-                }
+                item { SectionTitle("Continuar ouvindo", "Historico recente") }
                 items(recentSongs, key = { "recent-${it.id}" }) { music ->
-                    MusicCard(
+                    MediaCard(
                         music = music,
-                        isCurrent = music.id == currentMusicId,
-                        isLiked = music.id in likedIds,
+                        currentMusicId = currentMusicId,
+                        likedIds = likedIds,
                         playlists = playlists,
-                        onClick = onSongClick,
+                        queuedIds = queuedIds,
+                        onSongClick = onSongClick,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
-                        isQueued = music.id in queuedIds,
                         onAddToQueue = onAddToQueue,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
@@ -143,21 +183,20 @@ fun HomeScreen(
             val mostPlayed = playbackStats.playCounts.entries
                 .sortedByDescending { it.value }
                 .mapNotNull { entry -> songs.firstOrNull { it.id == entry.key } }
+                .filter { it.isVideo == (mediaFilter == HomeMediaFilter.Video) }
                 .take(3)
             if (mostPlayed.isNotEmpty()) {
-                item {
-                    SectionTitle("Mais tocadas", "Seu gosto aparecendo por aqui")
-                }
+                item { SectionTitle("Mais tocadas", "Seu gosto aparecendo por aqui") }
                 items(mostPlayed, key = { "top-${it.id}" }) { music ->
-                    MusicCard(
+                    MediaCard(
                         music = music,
-                        isCurrent = music.id == currentMusicId,
-                        isLiked = music.id in likedIds,
+                        currentMusicId = currentMusicId,
+                        likedIds = likedIds,
                         playlists = playlists,
-                        onClick = onSongClick,
+                        queuedIds = queuedIds,
+                        onSongClick = onSongClick,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
-                        isQueued = music.id in queuedIds,
                         onAddToQueue = onAddToQueue,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
@@ -172,7 +211,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Músicas do dispositivo",
+                        text = if (mediaFilter == HomeMediaFilter.Video) "Videos do dispositivo" else "Musicas do dispositivo",
                         color = WaveTextPrimary,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
@@ -190,16 +229,16 @@ fun HomeScreen(
                 }
             }
 
-            items(items = songs, key = { it.id }) { music ->
-                MusicCard(
+            items(items = visibleItems, key = { it.id }) { music ->
+                MediaCard(
                     music = music,
-                    isCurrent = music.id == currentMusicId,
-                    isLiked = music.id in likedIds,
+                    currentMusicId = currentMusicId,
+                    likedIds = likedIds,
                     playlists = playlists,
-                    onClick = onSongClick,
+                    queuedIds = queuedIds,
+                    onSongClick = onSongClick,
                     onToggleLike = onToggleLike,
                     onAddToPlaylist = onAddToPlaylist,
-                    isQueued = music.id in queuedIds,
                     onAddToQueue = onAddToQueue,
                     onRemoveFromQueue = onRemoveFromQueue
                 )
@@ -207,14 +246,45 @@ fun HomeScreen(
         } else {
             item {
                 EmptyMusicScreen(
-                    title = "Nenhuma música encontrada",
-                    message = "Baixe arquivos de áudio no aparelho e toque em atualizar.",
+                    title = if (mediaFilter == HomeMediaFilter.Video) "Nenhum video encontrado" else "Nenhuma musica encontrada",
+                    message = if (mediaFilter == HomeMediaFilter.Video) {
+                        "Baixe videos no aparelho e toque em atualizar."
+                    } else {
+                        "Baixe arquivos de audio no aparelho e toque em atualizar."
+                    },
                     actionText = "Atualizar",
                     onAction = onRefresh
                 )
             }
         }
     }
+}
+
+@Composable
+private fun MediaCard(
+    music: Music,
+    currentMusicId: Long?,
+    likedIds: Set<Long>,
+    playlists: List<Playlist>,
+    queuedIds: Set<Long>,
+    onSongClick: (Music) -> Unit,
+    onToggleLike: (Music) -> Unit,
+    onAddToPlaylist: (Music, Playlist) -> Unit,
+    onAddToQueue: (Music) -> Unit,
+    onRemoveFromQueue: (Music) -> Unit
+) {
+    MusicCard(
+        music = music,
+        isCurrent = music.id == currentMusicId,
+        isLiked = music.id in likedIds,
+        playlists = playlists,
+        onClick = onSongClick,
+        onToggleLike = onToggleLike,
+        onAddToPlaylist = onAddToPlaylist,
+        isQueued = music.id in queuedIds,
+        onAddToQueue = onAddToQueue,
+        onRemoveFromQueue = onRemoveFromQueue
+    )
 }
 
 @Composable
@@ -245,7 +315,7 @@ fun PermissionRequestScreen(
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "Permita acessar suas músicas",
+                text = "Permita acessar suas midias",
                 color = WaveTextPrimary,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
@@ -253,7 +323,7 @@ fun PermissionRequestScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "O Wave Music precisa ler os áudios baixados no dispositivo para montar sua biblioteca.",
+                text = "O Wave Music precisa ler audios e videos baixados no dispositivo para montar sua biblioteca.",
                 color = WaveTextSecondary,
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center
@@ -330,14 +400,14 @@ private fun FeaturedSongCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Biblioteca local",
+                    text = if (music.isVideo) "Biblioteca de videos" else "Biblioteca local",
                     color = WaveTextPrimary,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "$count músicas encontradas",
+                    text = "$count ${if (music.isVideo) "videos" else "musicas"} encontrados",
                     color = WaveTextPrimary.copy(alpha = 0.84f),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -381,26 +451,10 @@ private fun HomeStatsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        StatCard(
-            label = "Músicas",
-            value = songs.size.toString(),
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            label = "Curtidas",
-            value = likedCount.toString(),
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            label = "Fila",
-            value = queueCount.toString(),
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            label = "Ouvido",
-            value = listeningLabel(totalListenMs),
-            modifier = Modifier.weight(1f)
-        )
+        StatCard("Itens", songs.size.toString(), Modifier.weight(1f))
+        StatCard("Curtidas", likedCount.toString(), Modifier.weight(1f))
+        StatCard("Fila", queueCount.toString(), Modifier.weight(1f))
+        StatCard("Ouvido", listeningLabel(totalListenMs), Modifier.weight(1f))
     }
 }
 

@@ -23,6 +23,12 @@ data class Music(
             val mb = sizeBytes / (1024f * 1024f)
             return "%.1f MB".format(mb)
         }
+
+    val isVideo: Boolean
+        get() = mimeType.startsWith("video/", ignoreCase = true)
+
+    val mediaTypeLabel: String
+        get() = if (isVideo) "Video" else "Musica"
 }
 
 fun formatDuration(durationMs: Long): String {

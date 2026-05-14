@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -276,12 +277,7 @@ fun LibraryScreen(
 
                     if (playlists.isEmpty()) {
                         item {
-                            EmptyPlaylistState(
-                                onCreateClick = {
-                                    playlistForEdit = null
-                                    showPlaylistEditor = true
-                                }
-                            )
+                            EmptyPlaylistState()
                         }
                     } else {
                         items(playlists, key = { it.id }) { playlist ->
@@ -748,7 +744,7 @@ private fun PlaylistHero(
 }
 
 @Composable
-private fun EmptyPlaylistState(onCreateClick: () -> Unit) {
+private fun EmptyPlaylistState() {
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(30.dp),
@@ -783,13 +779,6 @@ private fun EmptyPlaylistState(onCreateClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
             )
-            Button(
-                onClick = onCreateClick,
-                colors = ButtonDefaults.buttonColors(containerColor = WavePink),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text("Criar playlist")
-            }
         }
     }
 }
@@ -897,7 +886,20 @@ private fun PlaylistEditorSheet(
     var description by remember(playlist?.id) { mutableStateOf(playlist?.description.orEmpty()) }
     var imageUri by remember(playlist?.id) { mutableStateOf(playlist?.imageUri) }
     var selectedIds by remember(playlist?.id) { mutableStateOf(playlist?.songIds?.toSet().orEmpty()) }
+    var songQuery by rememberSaveable(playlist?.id) { mutableStateOf("") }
     var showNameError by rememberSaveable { mutableStateOf(false) }
+    val filteredSongs = remember(songs, songQuery) {
+        val query = songQuery.trim()
+        songs
+            .sortedByDescending { it.dateAddedSeconds }
+            .filter { music ->
+                query.isBlank() ||
+                    music.title.contains(query, ignoreCase = true) ||
+                    music.artist.contains(query, ignoreCase = true) ||
+                    music.album.contains(query, ignoreCase = true) ||
+                    music.folder.contains(query, ignoreCase = true)
+            }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -984,6 +986,24 @@ private fun PlaylistEditorSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            OutlinedTextField(
+                value = songQuery,
+                onValueChange = { songQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Pesquisar musica ou video") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = "Pesquisar"
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(20.dp),
+                colors = playlistTextFieldColors()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             if (songs.isEmpty()) {
                 EmptyMusicScreen(
                     title = "Nenhuma musica disponivel",
@@ -994,7 +1014,15 @@ private fun PlaylistEditorSheet(
                     modifier = Modifier.heightIn(max = 220.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(songs, key = { it.id }) { music ->
+                    if (filteredSongs.isEmpty()) {
+                        item {
+                            EmptyMusicScreen(
+                                title = "Nenhum resultado encontrado",
+                                message = "Tente pesquisar outro nome, artista, album ou pasta."
+                            )
+                        }
+                    }
+                    items(filteredSongs, key = { it.id }) { music ->
                         SelectableSongRow(
                             music = music,
                             selected = music.id in selectedIds,
