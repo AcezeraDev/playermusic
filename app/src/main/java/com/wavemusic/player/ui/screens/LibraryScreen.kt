@@ -1,11 +1,18 @@
 package com.wavemusic.player.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,11 +31,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
@@ -36,8 +43,10 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueryStats
@@ -67,17 +76,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.Music
-import com.wavemusic.player.data.PlaybackStats
-import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.model.Music
+import com.wavemusic.player.data.model.PlaybackStats
+import com.wavemusic.player.data.model.Playlist
+import com.wavemusic.player.domain.usecase.playableSongsFor
 import com.wavemusic.player.ui.components.AlbumArtwork
 import com.wavemusic.player.ui.components.AnimatedCard
 import com.wavemusic.player.ui.components.AnimatedIconButton
-import com.wavemusic.player.ui.components.MusicCard
+import com.wavemusic.player.ui.components.MusicIconCluster
+import com.wavemusic.player.ui.components.MusicListItem
+import com.wavemusic.player.ui.components.NeonIconOrb
 import com.wavemusic.player.ui.components.PlaylistCard
 import com.wavemusic.player.ui.components.PlaylistCover
 import com.wavemusic.player.ui.components.PlaylistImagePicker
@@ -192,7 +205,7 @@ fun LibraryScreen(
     }
 
     fun playlistSongs(playlist: Playlist): List<Music> {
-        return playlist.songIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+        return playableSongsFor(playlist, songs)
     }
 
     fun playPlaylist(playlist: Playlist) {
@@ -206,9 +219,15 @@ fun LibraryScreen(
         playlistNotice = "Tocando ${playlist.name} na ordem da playlist."
     }
 
-    Crossfade(
+    AnimatedContent(
         targetState = page,
-        label = "library-page-transition",
+        transitionSpec = {
+            val forward = targetState != "root" && initialState == "root"
+            val direction = if (forward) 1 else -1
+            (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it * direction / 5 }) togetherWith
+                (fadeOut(tween(150)) + slideOutHorizontally(tween(220)) { -it * direction / 6 })
+        },
+        label = "library-page-slide-transition",
         modifier = modifier.fillMaxSize()
     ) { currentPage ->
         LazyColumn(
@@ -236,6 +255,15 @@ fun LibraryScreen(
 
             when (currentPage) {
                 "root" -> {
+                    item {
+                        LibraryOverviewPanel(
+                            songsCount = songs.size,
+                            playlistCount = playlists.size,
+                            likedCount = likedIds.size,
+                            recentCount = recentIds.size
+                        )
+                    }
+
                     items(sections, key = { it.target }) { section ->
                         EnteringItem {
                             LibrarySectionCard(
@@ -278,7 +306,12 @@ fun LibraryScreen(
 
                     if (playlists.isEmpty()) {
                         item {
-                            EmptyPlaylistState()
+                            EmptyPlaylistState(
+                                onCreateClick = {
+                                    playlistForEdit = null
+                                    showPlaylistEditor = true
+                                }
+                            )
                         }
                     } else {
                         items(playlists, key = { it.id }) { playlist ->
@@ -349,28 +382,22 @@ fun LibraryScreen(
                         } else {
                             items(selectedSongs, key = { it.id }) { music ->
                                 EnteringItem {
-                                    Column {
-                                        MusicCard(
-                                            music = music,
-                                            isCurrent = music.id == currentMusicId,
-                                            isLiked = music.id in likedIds,
-                                            playlists = playlists,
-                                            onClick = { selected -> onPlaySongList(selectedSongs, selected) },
-                                            onToggleLike = onToggleLike,
-                                            onAddToPlaylist = onAddToPlaylist,
-                                            isQueued = music.id in queuedIds,
-                                            onAddToQueue = onAddToQueue,
-                                            onRemoveFromQueue = onRemoveFromQueue
-                                        )
-                                        TextButton(
-                                            onClick = {
-                                                onRemoveFromPlaylist(music, playlist)
-                                                playlistNotice = "Musica removida da playlist."
-                                            }
-                                        ) {
-                                            Text("Remover desta playlist", color = WavePink)
+                                    MusicListItem(
+                                        music = music,
+                                        isCurrent = music.id == currentMusicId,
+                                        isLiked = music.id in likedIds,
+                                        playlists = playlists,
+                                        onClick = { selected -> onPlaySongList(selectedSongs, selected) },
+                                        onToggleLike = onToggleLike,
+                                        onAddToPlaylist = onAddToPlaylist,
+                                        isQueued = music.id in queuedIds,
+                                        onAddToQueue = onAddToQueue,
+                                        onRemoveFromQueue = onRemoveFromQueue,
+                                        onRemoveFromPlaylist = {
+                                            onRemoveFromPlaylist(music, playlist)
+                                            playlistNotice = "Musica removida da playlist."
                                         }
-                                    }
+                                    )
                                 }
                             }
                         }
@@ -592,7 +619,7 @@ private fun LazyListScope.songItems(
     } else {
         items(songs, key = { it.id }) { music ->
             EnteringItem {
-                MusicCard(
+                MusicListItem(
                     music = music,
                     isCurrent = music.id == currentMusicId,
                     isLiked = music.id in likedIds,
@@ -621,45 +648,216 @@ private fun EnteringItem(content: @Composable () -> Unit) {
 }
 
 @Composable
+private fun LibraryOverviewPanel(
+    songsCount: Int,
+    playlistCount: Int,
+    likedCount: Int,
+    recentCount: Int
+) {
+    AnimatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(34.dp),
+        color = WaveSurface.copy(alpha = 0.78f),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            WavePurple.copy(alpha = 0.34f),
+                            WaveSurface.copy(alpha = 0.92f),
+                            WaveBlue.copy(alpha = 0.22f)
+                        )
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "WAVE LIBRARY",
+                            color = WaveBlue,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "Sua musica organizada em neon",
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "$songsCount faixas locais prontas para tocar, favoritar e organizar.",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        MusicIconCluster(
+                            modifier = Modifier.padding(top = 12.dp),
+                            icons = listOf(
+                                Icons.Rounded.LibraryMusic,
+                                Icons.Rounded.Favorite,
+                                Icons.Rounded.GraphicEq
+                            ),
+                            colors = listOf(WaveBlue, WavePink, WavePurple)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(86.dp)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(Brush.linearGradient(listOf(WavePink, WavePurple, WaveBlue)))
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.24f),
+                                shape = RoundedCornerShape(28.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = WaveTextPrimary,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LibraryMetricChip(
+                        value = playlistCount.toString(),
+                        label = "playlists",
+                        colors = listOf(WavePurple, WaveBlue),
+                        modifier = Modifier.weight(1f)
+                    )
+                    LibraryMetricChip(
+                        value = likedCount.toString(),
+                        label = "curtidas",
+                        colors = listOf(WavePink, WavePurple),
+                        modifier = Modifier.weight(1f)
+                    )
+                    LibraryMetricChip(
+                        value = recentCount.toString(),
+                        label = "recentes",
+                        colors = listOf(WaveBlue, WavePink),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryMetricChip(
+    value: String,
+    label: String,
+    colors: List<Color>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(WaveSurfaceBright.copy(alpha = 0.34f))
+            .border(
+                width = 1.dp,
+                color = colors.first().copy(alpha = 0.28f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            color = colors.first(),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            maxLines = 1
+        )
+        Text(
+            text = label,
+            color = WaveTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun LibraryHeader(
     title: String,
     subtitle: String,
     showBack: Boolean,
     onBack: () -> Unit
 ) {
-    Row(
+    AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        shape = RoundedCornerShape(28.dp),
+        color = WaveSurface.copy(alpha = 0.58f),
+        contentPadding = PaddingValues(14.dp)
     ) {
-        if (showBack) {
-            AnimatedIconButton(
-                onClick = onBack,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Voltar",
-                    tint = WaveTextPrimary
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showBack) {
+                AnimatedIconButton(
+                    onClick = onBack,
+                    modifier = Modifier.size(44.dp),
+                    background = Brush.linearGradient(
+                        listOf(WaveSurfaceBright.copy(alpha = 0.9f), WaveSurface.copy(alpha = 0.6f))
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Voltar",
+                        tint = WaveTextPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(100.dp))
+                    .background(WaveSurfaceBright.copy(alpha = 0.54f))
+                    .border(
+                        width = 1.dp,
+                        color = WaveBlue.copy(alpha = 0.22f),
+                        shape = RoundedCornerShape(100.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "NEON",
+                    color = WaveBlue,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black
+                )
+            }
         }
     }
 }
@@ -673,10 +871,20 @@ private fun LibrarySectionCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         shape = RoundedCornerShape(26.dp),
-        color = WaveSurface.copy(alpha = 0.78f),
-        contentPadding = PaddingValues(16.dp)
+        color = WaveSurface.copy(alpha = 0.72f),
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(section.colors.first().copy(alpha = 0.15f), Color.Transparent)
+                    )
+                )
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             GradientIcon(
                 icon = section.icon,
                 colors = section.colors,
@@ -688,7 +896,9 @@ private fun LibrarySectionCard(
                     text = section.title,
                     color = WaveTextPrimary,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = section.subtitle,
@@ -697,7 +907,18 @@ private fun LibrarySectionCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                MusicIconCluster(
+                    modifier = Modifier.padding(top = 8.dp),
+                    icons = listOf(section.icon, Icons.Rounded.MusicNote),
+                    colors = section.colors
+                )
             }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = section.colors.last(),
+                modifier = Modifier.size(26.dp)
+            )
         }
     }
 }
@@ -709,36 +930,159 @@ private fun PlaylistHero(
 ) {
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        color = WaveSurface.copy(alpha = 0.76f),
-        contentPadding = PaddingValues(18.dp)
+        shape = RoundedCornerShape(34.dp),
+        color = WaveSurface.copy(alpha = 0.8f),
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GradientIcon(
-                    icon = Icons.Rounded.LibraryMusic,
-                    colors = listOf(WavePurple, WavePink, WaveBlue),
-                    contentDescription = null
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            WavePurple.copy(alpha = 0.36f),
+                            WaveSurface.copy(alpha = 0.96f),
+                            WavePink.copy(alpha = 0.2f)
+                        )
+                    )
                 )
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Sua colecao premium",
-                        color = WaveTextPrimary,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black
-                    )
-                    Text(
-                        text = "$playlistCount playlists com capas, descricoes e musicas locais.",
-                        color = WaveTextSecondary,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                .padding(20.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "PLAYLISTS",
+                            color = WavePink,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "Colecoes com capa e energia propria",
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "$playlistCount playlists criadas no Wave Music.",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        MusicIconCluster(
+                            modifier = Modifier.padding(top = 12.dp),
+                            icons = listOf(
+                                Icons.AutoMirrored.Rounded.QueueMusic,
+                                Icons.Rounded.PlayArrow,
+                                Icons.Rounded.GraphicEq
+                            ),
+                            colors = listOf(WavePink, WavePurple, WaveBlue)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Box(modifier = Modifier.size(96.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(58.dp)
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(Brush.linearGradient(listOf(WaveBlue, WavePurple)))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .size(66.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Brush.linearGradient(listOf(WavePink, WavePurple)))
+                                .border(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = 0.22f),
+                                    shape = RoundedCornerShape(24.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = null,
+                                tint = WaveTextPrimary,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = onCreateClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = WavePink),
+                    shape = RoundedCornerShape(100.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = null)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Criar playlist")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptyPlaylistState(onCreateClick: () -> Unit) {
+    AnimatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(34.dp),
+        color = WaveSurface.copy(alpha = 0.72f),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(WaveBlue.copy(alpha = 0.18f), WaveSurface.copy(alpha = 0.92f))
+                    )
+                )
+                .padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(104.dp)
+                    .clip(RoundedCornerShape(34.dp))
+                    .background(Brush.linearGradient(listOf(WavePurple, WavePink, WaveBlue)))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(34.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                    contentDescription = null,
+                    tint = WaveTextPrimary,
+                    modifier = Modifier.size(44.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Comece uma colecao",
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                text = "Crie uma playlist bonita, escolha uma capa e separe suas faixas favoritas.",
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
+            )
             Button(
                 onClick = onCreateClick,
-                modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
                 shape = RoundedCornerShape(100.dp)
             ) {
@@ -746,46 +1090,6 @@ private fun PlaylistHero(
                 Spacer(modifier = Modifier.size(8.dp))
                 Text("Criar playlist")
             }
-        }
-    }
-}
-
-@Composable
-private fun EmptyPlaylistState() {
-    AnimatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        color = WaveSurface.copy(alpha = 0.72f),
-        contentPadding = PaddingValues(22.dp)
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(WavePurple, WavePink, WaveBlue))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                    contentDescription = null,
-                    tint = WaveTextPrimary,
-                    modifier = Modifier.size(42.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Nenhuma playlist criada",
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = "Crie uma playlist com capa personalizada e escolha suas musicas favoritas.",
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
-            )
         }
     }
 }
@@ -801,44 +1105,113 @@ private fun PlaylistDetailsHero(
 ) {
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        color = WaveSurface.copy(alpha = 0.8f),
-        contentPadding = PaddingValues(18.dp)
+        shape = RoundedCornerShape(36.dp),
+        color = WaveSurface.copy(alpha = 0.84f),
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Column {
-            PlaylistCover(
-                imageUri = playlist.imageUri,
-                seed = playlist.id,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
-                cornerRadius = 28.dp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = playlist.name,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (playlist.description.isNotBlank()) {
-                Text(
-                    text = playlist.description,
-                    color = WaveTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            WavePink.copy(alpha = 0.24f),
+                            WaveSurface.copy(alpha = 0.96f),
+                            WaveBlue.copy(alpha = 0.2f)
+                        )
+                    )
                 )
+                .padding(18.dp)
+        ) {
+            Box {
+                PlaylistCover(
+                    imageUri = playlist.imageUri,
+                    seed = playlist.id,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(210.dp),
+                    cornerRadius = 30.dp
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(14.dp)
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(WaveSurface.copy(alpha = 0.68f))
+                        .border(
+                            width = 1.dp,
+                            color = WaveBlue.copy(alpha = 0.32f),
+                            shape = RoundedCornerShape(100.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        text = "PLAYLIST",
+                        color = WaveBlue,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black
+                    )
+                }
             }
-            Text(
-                text = "$songCount musicas",
-                color = WaveBlue,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = playlist.name,
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (playlist.description.isNotBlank()) {
+                        Text(
+                            text = playlist.description,
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 4.dp),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    MusicIconCluster(
+                        modifier = Modifier.padding(top = 10.dp),
+                        icons = listOf(
+                            Icons.AutoMirrored.Rounded.QueueMusic,
+                            Icons.Rounded.MusicNote,
+                            Icons.Rounded.PlayArrow
+                        ),
+                        colors = listOf(WavePink, WaveBlue, WavePurple)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(WaveSurfaceBright.copy(alpha = 0.44f))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = songCount.toString(),
+                            color = WavePink,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "faixas",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = onPlay,
@@ -862,7 +1235,9 @@ private fun PlaylistDetailsHero(
                     Text("Adicionar")
                 }
             }
+
             Spacer(modifier = Modifier.height(8.dp))
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Rounded.Edit, contentDescription = null, tint = WaveBlue)
@@ -921,19 +1296,61 @@ private fun PlaylistEditorSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 26.dp)
         ) {
-            Text(
-                text = if (playlist == null) "Nova playlist" else "Editar playlist",
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = "Escolha capa, nome, descricao e musicas.",
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                WavePurple.copy(alpha = 0.42f),
+                                WaveSurfaceBright.copy(alpha = 0.42f),
+                                WavePink.copy(alpha = 0.24f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = WaveBlue.copy(alpha = 0.22f),
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GradientIcon(
+                        icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                        colors = listOf(WavePink, WavePurple, WaveBlue),
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (playlist == null) "Nova playlist" else "Editar playlist",
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Capa, nome e musicas em um fluxo so.",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = "Capa e detalhes",
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             PlaylistImagePicker(
                 playlistId = draftId,
@@ -975,21 +1392,46 @@ private fun PlaylistEditorSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Text(
-                text = "Musicas da playlist",
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = if (selectedIds.isEmpty()) {
-                    "Nenhuma selecionada. Voce pode salvar vazia."
-                } else {
-                    "${selectedIds.size} musicas selecionadas"
-                },
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Musicas da playlist",
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = if (selectedIds.isEmpty()) {
+                            "Salve vazia ou toque nas faixas para selecionar."
+                        } else {
+                            "Toque novamente para remover da selecao."
+                        },
+                        color = WaveTextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(WaveSurfaceBright.copy(alpha = 0.48f))
+                        .border(
+                            width = 1.dp,
+                            color = WavePink.copy(alpha = 0.26f),
+                            shape = RoundedCornerShape(100.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "${selectedIds.size} selecionadas",
+                        color = WavePink,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1052,7 +1494,10 @@ private fun PlaylistEditorSheet(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(0.8f)
+                ) {
                     Text("Cancelar", color = WaveTextSecondary)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -1064,6 +1509,7 @@ private fun PlaylistEditorSheet(
                             onSave(name.trim(), description.trim(), imageUri, selectedIds.toList())
                         }
                     },
+                    modifier = Modifier.weight(1.4f),
                     colors = ButtonDefaults.buttonColors(containerColor = WavePink),
                     shape = RoundedCornerShape(100.dp)
                 ) {
@@ -1088,18 +1534,39 @@ private fun SelectableSongRow(
     selected: Boolean,
     onToggle: () -> Unit
 ) {
+    val shape = RoundedCornerShape(22.dp)
+    val selectedScale by animateFloatAsState(
+        targetValue = if (selected) 1.015f else 1f,
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 420f),
+        label = "playlist-song-selected-scale"
+    )
     AnimatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = selectedScale
+                scaleY = selectedScale
+                shadowElevation = if (selected) 16f else 6f
+            }
+            .border(
+                width = 1.dp,
+                color = if (selected) WavePink.copy(alpha = 0.42f) else WaveSurfaceBright.copy(alpha = 0.18f),
+                shape = shape
+            ),
         onClick = onToggle,
-        shape = RoundedCornerShape(20.dp),
-        color = if (selected) WavePurple.copy(alpha = 0.24f) else WaveSurfaceBright.copy(alpha = 0.36f),
+        shape = shape,
+        color = if (selected) WavePurple.copy(alpha = 0.28f) else WaveSurfaceBright.copy(alpha = 0.32f),
         pressedScale = 0.985f,
-        contentPadding = PaddingValues(10.dp)
+        contentPadding = PaddingValues(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
                 checked = selected,
                 onCheckedChange = { onToggle() },
+                modifier = Modifier.graphicsLayer {
+                    scaleX = if (selected) 1.12f else 1f
+                    scaleY = if (selected) 1.12f else 1f
+                },
                 colors = CheckboxDefaults.colors(
                     checkedColor = WavePink,
                     uncheckedColor = WaveTextSecondary,
@@ -1122,6 +1589,7 @@ private fun SelectableSongRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = music.artist,
                     color = WaveTextSecondary,
@@ -1132,8 +1600,9 @@ private fun SelectableSongRow(
             }
             Text(
                 text = music.duration,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodySmall
+                color = if (selected) WaveBlue else WaveTextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
             )
         }
     }
@@ -1150,11 +1619,17 @@ private fun CollectionRow(
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
-        color = WaveSurface.copy(alpha = 0.78f),
-        contentPadding = PaddingValues(16.dp)
+        shape = RoundedCornerShape(26.dp),
+        color = WaveSurface.copy(alpha = 0.72f),
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(colors.first().copy(alpha = 0.14f), Color.Transparent)))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             GradientIcon(icon = icon, colors = colors, contentDescription = title)
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -1172,6 +1647,12 @@ private fun CollectionRow(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = colors.last(),
+                modifier = Modifier.size(26.dp)
+            )
         }
     }
 }
@@ -1183,11 +1664,17 @@ private fun EmptyMusicScreen(
 ) {
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(30.dp),
         color = WaveSurface.copy(alpha = 0.7f),
-        contentPadding = PaddingValues(18.dp)
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(WavePurple.copy(alpha = 0.16f), Color.Transparent)))
+                .padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             GradientIcon(
                 icon = Icons.Rounded.LibraryMusic,
                 colors = listOf(WavePurple, WaveBlue),
@@ -1218,7 +1705,7 @@ private fun NoticeCard(
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        color = WaveSurfaceBright.copy(alpha = 0.58f),
+        color = WaveSurfaceBright.copy(alpha = 0.62f),
         contentPadding = PaddingValues(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1241,20 +1728,14 @@ private fun GradientIcon(
     colors: List<Color>,
     contentDescription: String?
 ) {
-    Box(
-        modifier = Modifier
-            .size(58.dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(colors)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = WaveTextPrimary,
-            modifier = Modifier.size(28.dp)
-        )
-    }
+    NeonIconOrb(
+        icon = icon,
+        contentDescription = contentDescription,
+        size = 58.dp,
+        iconSize = 28.dp,
+        colors = colors,
+        active = true
+    )
 }
 
 @Composable
@@ -1273,18 +1754,38 @@ private fun StatsPanel(
 
     AnimatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(30.dp),
         color = WaveSurface.copy(alpha = 0.78f),
-        contentPadding = PaddingValues(16.dp)
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Column {
-            Text(
-                text = "Resumo local",
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(WaveBlue.copy(alpha = 0.16f), Color.Transparent)))
+                .padding(18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GradientIcon(
+                    icon = Icons.Rounded.QueryStats,
+                    colors = listOf(WaveBlue, WavePurple),
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = "Resumo local",
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "Dados salvos no dispositivo",
+                        color = WaveTextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
             StatLine("Musicas tocadas", playbackStats.playCounts.values.sum().toString())
             StatLine("Tempo ouvindo", if (minutes < 60) "${minutes} min" else "${minutes / 60} h ${minutes % 60} min")
             StatLine("Artista favorito", topArtist)
@@ -1367,3 +1868,4 @@ private fun subtitleForPage(
         else -> "${songs.size} musicas carregadas do dispositivo"
     }
 }
+

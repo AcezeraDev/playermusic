@@ -77,3 +77,4 @@ class WaveMusicWidgetProvider : AppWidgetProvider() {
         private const val KEY_PLAYING = "playing"
     }
 }
+

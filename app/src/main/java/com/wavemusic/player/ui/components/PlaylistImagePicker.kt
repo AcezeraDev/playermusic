@@ -3,11 +3,14 @@ package com.wavemusic.player.ui.components
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,11 +26,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.PlaylistImageStore
+import com.wavemusic.player.data.local.PlaylistImageStore
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
+import com.wavemusic.player.ui.theme.WavePurple
+import com.wavemusic.player.ui.theme.WaveSurfaceBright
 import com.wavemusic.player.ui.theme.WaveTextPrimary
 import com.wavemusic.player.ui.theme.WaveTextSecondary
 import kotlinx.coroutines.Dispatchers
@@ -59,14 +66,33 @@ fun PlaylistImagePicker(
     )
 
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(30.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(WaveSurfaceBright.copy(alpha = 0.42f), WavePurple.copy(alpha = 0.14f))
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = WaveBlue.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(30.dp)
+            )
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         PlaylistCover(
             imageUri = imageUri,
             seed = playlistId,
-            modifier = Modifier.size(112.dp),
+            modifier = Modifier
+                .size(116.dp)
+                .border(
+                    width = 1.dp,
+                    color = WavePink.copy(alpha = 0.28f),
+                    shape = RoundedCornerShape(30.dp)
+                ),
             cornerRadius = 28.dp
         )
 
@@ -85,7 +111,7 @@ fun PlaylistImagePicker(
             ) {
                 Icon(Icons.Rounded.AddPhotoAlternate, contentDescription = null)
                 Spacer(modifier = Modifier.size(8.dp))
-                Text("Escolher imagem", color = WaveTextPrimary)
+                Text("Escolher capa", color = WaveTextPrimary)
             }
 
             OutlinedButton(
@@ -99,8 +125,9 @@ fun PlaylistImagePicker(
                     tint = if (imageUri.isNullOrBlank()) WaveTextSecondary else WavePink
                 )
                 Spacer(modifier = Modifier.size(8.dp))
-                Text("Remover capa", color = if (imageUri.isNullOrBlank()) WaveTextSecondary else WavePink)
+                Text("Remover", color = if (imageUri.isNullOrBlank()) WaveTextSecondary else WavePink)
             }
         }
     }
 }
+

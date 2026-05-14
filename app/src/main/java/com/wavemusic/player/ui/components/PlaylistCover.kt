@@ -135,3 +135,4 @@ private fun playlistPalette(seed: Long): List<Color> {
     )
     return palettes[(seed.absoluteValue % palettes.size).toInt()]
 }
+

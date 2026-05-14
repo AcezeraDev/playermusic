@@ -27,7 +27,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.wavemusic.player.MainActivity
 import com.wavemusic.player.R
-import com.wavemusic.player.data.Music
+import com.wavemusic.player.data.model.Music
 import kotlin.math.min
 
 class WaveMusicNotificationController(
@@ -45,8 +45,30 @@ class WaveMusicNotificationController(
         durationMs: Long,
         sessionToken: MediaSession.Token
     ) {
+        val notification = buildNotification(
+            music = music,
+            isPlaying = isPlaying,
+            isLiked = isLiked,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            sessionToken = sessionToken
+        )
+
         if (!canPostNotifications()) return
 
+        runCatching {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
+    }
+
+    fun buildNotification(
+        music: Music,
+        isPlaying: Boolean,
+        isLiked: Boolean,
+        positionMs: Long,
+        durationMs: Long,
+        sessionToken: MediaSession.Token
+    ): Notification {
         createChannel()
 
         val launchIntent = context.packageManager
@@ -131,9 +153,7 @@ class WaveMusicNotificationController(
             )
         }
 
-        runCatching {
-            notificationManager.notify(NOTIFICATION_ID, builder.build())
-        }
+        return builder.build()
     }
 
     fun cancel() {
@@ -282,18 +302,20 @@ class WaveMusicNotificationController(
         return "%02d:%02d".format(minutes, seconds)
     }
 
-    private companion object {
+    companion object {
         const val CHANNEL_ID = "wave_music_media_controls"
         const val NOTIFICATION_ID = 4207
-        const val REQUEST_OPEN_APP = 11
-        const val REQUEST_FAVORITE = 12
-        const val REQUEST_PREVIOUS = 13
-        const val REQUEST_PLAY_PAUSE = 14
-        const val REQUEST_NEXT = 15
-        const val REQUEST_CLOSE = 16
         const val PROGRESS_MAX = 1000
-        const val ARTWORK_SIZE = 256
-        const val ARTWORK_CORNER = 34f
-        const val ARTWORK_CACHE_SIZE = 24
+
+        private const val REQUEST_OPEN_APP = 11
+        private const val REQUEST_FAVORITE = 12
+        private const val REQUEST_PREVIOUS = 13
+        private const val REQUEST_PLAY_PAUSE = 14
+        private const val REQUEST_NEXT = 15
+        private const val REQUEST_CLOSE = 16
+        private const val ARTWORK_SIZE = 256
+        private const val ARTWORK_CORNER = 34f
+        private const val ARTWORK_CACHE_SIZE = 24
     }
 }
+

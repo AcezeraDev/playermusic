@@ -1,8 +1,14 @@
 package com.wavemusic.player.ui.components
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
@@ -25,11 +33,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.Music
+import com.wavemusic.player.data.model.Music
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -52,47 +61,79 @@ fun MiniPlayer(
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 180f),
         label = "mini-player-progress"
     )
+    val motion = rememberInfiniteTransition(label = "mini-player-cover-motion")
+    val coverSway by motion.animateFloat(
+        initialValue = -2.2f,
+        targetValue = 2.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "mini-player-cover-sway"
+    )
 
-    AnimatedCard(
+    NeonCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 8.dp),
         enabled = music != null,
         onClick = if (music != null) onClick else null,
-        shape = RoundedCornerShape(26.dp),
-        color = WaveSurface.copy(alpha = 0.98f),
-        contentPadding = PaddingValues(0.dp),
-        pressedScale = 0.985f
+        shape = RoundedCornerShape(30.dp),
+        colors = if (isPlaying) listOf(WavePink, WaveBlue) else listOf(WavePurple, WaveSurface),
+        contentPadding = PaddingValues(0.dp)
     ) {
         Column {
             Row(
                 modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AlbumArtwork(
-                    music = music,
-                    modifier = Modifier.size(54.dp),
-                    cornerRadius = 16.dp
-                )
+                Box {
+                    AlbumArtwork(
+                        music = music,
+                        modifier = Modifier
+                            .size(54.dp)
+                            .graphicsLayer {
+                                rotationZ = if (isPlaying) coverSway else 0f
+                                scaleX = if (isPlaying) 1.03f else 1f
+                                scaleY = if (isPlaying) 1.03f else 1f
+                            },
+                        cornerRadius = 16.dp
+                    )
+                    NeonIconOrb(
+                        icon = if (isPlaying) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        size = 24.dp,
+                        iconSize = 13.dp,
+                        colors = if (isPlaying) listOf(WavePink, WaveBlue) else listOf(WavePurple, WaveSurface),
+                        active = isPlaying
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = music?.title ?: "Escolha uma musica",
-                        color = WaveTextPrimary,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = music?.artist ?: "Suas musicas baixadas aparecem aqui",
-                        color = WaveTextSecondary,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Crossfade(
+                    targetState = music,
+                    label = "mini-player-track-crossfade",
+                    modifier = Modifier.weight(1f)
+                ) { track ->
+                    Column {
+                        Text(
+                            text = track?.title ?: "Escolha uma musica",
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = track?.artist ?: "Suas musicas baixadas aparecem aqui",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 AnimatedIconButton(
@@ -125,6 +166,16 @@ fun MiniPlayer(
                 }
             }
 
+            NeonVisualizer(
+                isPlaying = isPlaying,
+                seed = music?.id ?: 0L,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(18.dp)
+                    .padding(horizontal = 14.dp),
+                bars = 26
+            )
+
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier
@@ -136,3 +187,4 @@ fun MiniPlayer(
         }
     }
 }
+

@@ -19,7 +19,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,12 +47,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.Music
-import com.wavemusic.player.data.PlaybackStats
-import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.model.Music
+import com.wavemusic.player.data.model.PlaybackStats
+import com.wavemusic.player.data.model.Playlist
 import com.wavemusic.player.ui.components.AlbumArtwork
-import com.wavemusic.player.ui.components.MusicCard
+import com.wavemusic.player.ui.components.EmptyState
+import com.wavemusic.player.ui.components.GlassCard
+import com.wavemusic.player.ui.components.GradientHeader
+import com.wavemusic.player.ui.components.MusicIconCluster
+import com.wavemusic.player.ui.components.MusicListItem
 import com.wavemusic.player.ui.components.NeonVisualizer
+import com.wavemusic.player.ui.components.NeonCard
+import com.wavemusic.player.ui.components.PlaylistCover
+import com.wavemusic.player.ui.components.SectionTitle
+import com.wavemusic.player.ui.components.LoadingState
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -75,6 +89,7 @@ fun HomeScreen(
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
+    onPlaylistClick: (Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit,
     queuedIds: Set<Long>,
@@ -87,6 +102,8 @@ fun HomeScreen(
         HomeMediaFilter.Music -> audioItems
         HomeMediaFilter.Video -> videoItems
     }
+    val songsById = songs.associateBy { it.id }
+    val featuredPlaylists = playlists.sortedByDescending { it.createdAt }.take(8)
 
     if (!hasPermission) {
         PermissionRequestScreen(onRequestPermission = onRequestPermission, modifier = modifier)
@@ -99,19 +116,13 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column {
-                Text(
-                    text = "Wave Music",
-                    color = WaveTextPrimary,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Black
-                )
-                Text(
-                    text = "Suas musicas e videos baixados, agora em neon",
-                    color = WaveTextSecondary,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
+            GradientHeader(
+                title = greetingTitle(),
+                subtitle = "Suas musicas e videos baixados, organizados em um player neon premium.",
+                eyebrow = "WAVE MUSIC",
+                icon = Icons.Rounded.AutoAwesome,
+                colors = listOf(WavePurple, WavePink, WaveBlue)
+            )
         }
 
         item {
@@ -135,7 +146,7 @@ fun HomeScreen(
 
         if (isLoading) {
             item {
-                EmptyMusicScreen(
+                LoadingState(
                     title = "Carregando biblioteca",
                     message = "Estamos lendo audios e videos do dispositivo."
                 )
@@ -145,6 +156,7 @@ fun HomeScreen(
                 FeaturedSongCard(
                     music = visibleItems.first(),
                     count = visibleItems.size,
+                    playlistCount = playlists.size,
                     onClick = { onSongClick(visibleItems.first()) }
                 )
             }
@@ -158,12 +170,37 @@ fun HomeScreen(
                 )
             }
 
+            if (featuredPlaylists.isNotEmpty()) {
+                item {
+                    SectionTitle(
+                        title = "Playlists em destaque",
+                        subtitle = "Suas colecoes prontas para tocar",
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                        accent = WavePink
+                    )
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(featuredPlaylists, key = { it.id }) { playlist ->
+                            val songCount = playlist.songIds.count { songsById.containsKey(it) }
+                            val previewSong = playlist.songIds.firstNotNullOfOrNull { songsById[it] }
+                            PlaylistSpotlightCard(
+                                playlist = playlist,
+                                songCount = songCount,
+                                previewSong = previewSong,
+                                onClick = { onPlaylistClick(playlist) }
+                            )
+                        }
+                    }
+                }
+            }
+
             val recentSongs = recentIds
                 .mapNotNull { id -> songs.firstOrNull { it.id == id } }
                 .filter { it.isVideo == (mediaFilter == HomeMediaFilter.Video) }
                 .take(5)
             if (recentSongs.isNotEmpty()) {
-                item { SectionTitle("Continuar ouvindo", "Historico recente") }
+                item { SectionTitle("Continuar ouvindo", "Historico recente", icon = Icons.Rounded.History, accent = WaveBlue) }
                 items(recentSongs, key = { "recent-${it.id}" }) { music ->
                     MediaCard(
                         music = music,
@@ -186,7 +223,7 @@ fun HomeScreen(
                 .filter { it.isVideo == (mediaFilter == HomeMediaFilter.Video) }
                 .take(3)
             if (mostPlayed.isNotEmpty()) {
-                item { SectionTitle("Mais tocadas", "Seu gosto aparecendo por aqui") }
+                item { SectionTitle("Mais tocadas", "Seu gosto aparecendo por aqui", icon = Icons.Rounded.GraphicEq, accent = WavePink) }
                 items(mostPlayed, key = { "top-${it.id}" }) { music ->
                     MediaCard(
                         music = music,
@@ -273,7 +310,7 @@ private fun MediaCard(
     onAddToQueue: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit
 ) {
-    MusicCard(
+    MusicListItem(
         music = music,
         isCurrent = music.id == currentMusicId,
         isLiked = music.id in likedIds,
@@ -298,45 +335,13 @@ fun PermissionRequestScreen(
             .padding(28.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(88.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Brush.linearGradient(listOf(WavePurple, WavePink))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.LibraryMusic,
-                    contentDescription = null,
-                    tint = WaveTextPrimary,
-                    modifier = Modifier.size(42.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                text = "Permita acessar suas midias",
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "O Wave Music precisa ler audios e videos baixados no dispositivo para montar sua biblioteca.",
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(22.dp))
-            Button(
-                onClick = onRequestPermission,
-                colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text("Permitir acesso")
-            }
-        }
+        EmptyState(
+            title = "Permita acessar suas midias",
+            message = "O Wave Music precisa ler audios e videos baixados no dispositivo para montar sua biblioteca.",
+            icon = Icons.Rounded.LibraryMusic,
+            actionText = "Permitir acesso",
+            onAction = onRequestPermission
+        )
     }
 }
 
@@ -347,67 +352,42 @@ fun EmptyMusicScreen(
     actionText: String? = null,
     onAction: (() -> Unit)? = null
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 34.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(WaveSurface.copy(alpha = 0.64f))
-            .padding(22.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = title,
-            color = WaveTextPrimary,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = message,
-            color = WaveTextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center
-        )
-        if (actionText != null && onAction != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = onAction,
-                colors = ButtonDefaults.buttonColors(containerColor = WavePink),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(actionText)
-            }
-        }
-    }
+    EmptyState(
+        title = title,
+        message = message,
+        icon = Icons.Rounded.LibraryMusic,
+        actionText = actionText,
+        onAction = onAction,
+        modifier = Modifier.padding(vertical = 22.dp)
+    )
 }
 
 @Composable
 private fun FeaturedSongCard(
     music: Music,
     count: Int,
+    playlistCount: Int,
     onClick: () -> Unit
 ) {
-    Box(
+    NeonCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp))
-            .clickable { onClick() }
-            .background(Brush.linearGradient(listOf(WavePurple, WaveBlue, WavePink)))
-            .padding(18.dp)
+            .clickable { onClick() },
+        colors = listOf(WavePurple, WaveBlue, WavePink),
+        shape = RoundedCornerShape(34.dp),
+        contentPadding = PaddingValues(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (music.isVideo) "Biblioteca de videos" else "Biblioteca local",
+                    text = "Continuar ouvindo",
                     color = WaveTextPrimary,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "$count ${if (music.isVideo) "videos" else "musicas"} encontrados",
+                    text = "$count ${if (music.isVideo) "videos" else "musicas"} no aparelho - $playlistCount playlists",
                     color = WaveTextPrimary.copy(alpha = 0.84f),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -427,6 +407,11 @@ private fun FeaturedSongCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                MusicIconCluster(
+                    modifier = Modifier.padding(top = 12.dp),
+                    icons = listOf(Icons.Rounded.MusicNote, Icons.Rounded.GraphicEq, Icons.Rounded.AutoAwesome),
+                    colors = listOf(WaveTextPrimary.copy(alpha = 0.9f), WaveBlue, WavePink)
+                )
             }
 
             Spacer(modifier = Modifier.width(14.dp))
@@ -436,6 +421,100 @@ private fun FeaturedSongCard(
                 modifier = Modifier.size(96.dp),
                 cornerRadius = 28.dp
             )
+        }
+    }
+}
+
+@Composable
+private fun PlaylistSpotlightCard(
+    playlist: Playlist,
+    songCount: Int,
+    previewSong: Music?,
+    onClick: () -> Unit
+) {
+    NeonCard(
+        modifier = Modifier
+            .width(188.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(28.dp),
+        colors = listOf(WavePurple, WavePink),
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(112.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                NeonVisualizer(
+                    isPlaying = true,
+                    seed = playlist.id,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    bars = 18
+                )
+                PlaylistCover(
+                    imageUri = playlist.imageUri,
+                    seed = playlist.id,
+                    modifier = Modifier.size(92.dp),
+                    cornerRadius = 24.dp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = playlist.name,
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (songCount == 1) "1 musica" else "$songCount musicas",
+                color = WaveBlue,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = previewSong?.title ?: "Toque para editar na Biblioteca",
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(WavePink),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = WaveTextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                    contentDescription = null,
+                    tint = WaveBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "Playlist",
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
         }
     }
 }
@@ -464,54 +543,40 @@ private fun StatCard(
     value: String,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    GlassCard(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(WaveSurface.copy(alpha = 0.68f))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clip(RoundedCornerShape(22.dp)),
+        shape = RoundedCornerShape(22.dp),
+        contentPadding = PaddingValues(12.dp)
     ) {
-        NeonVisualizer(
-            isPlaying = true,
-            seed = value.hashCode().toLong(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp),
-            bars = 8
-        )
-        Text(
-            text = value,
-            color = WaveTextPrimary,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Black,
-            maxLines = 1
-        )
-        Text(
-            text = label,
-            color = WaveTextSecondary,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            NeonVisualizer(
+                isPlaying = true,
+                seed = value.hashCode().toLong(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp),
+                bars = 8
+            )
+            Text(
+                text = value,
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1
+            )
+            Text(
+                text = label,
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
-@Composable
-private fun SectionTitle(title: String, subtitle: String) {
-    Column(modifier = Modifier.padding(top = 8.dp)) {
-        Text(
-            text = title,
-            color = WaveTextPrimary,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black
-        )
-        Text(
-            text = subtitle,
-            color = WaveTextSecondary,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
+private fun greetingTitle(): String = "Sua onda de hoje"
 
 private fun listeningLabel(totalListenMs: Long): String {
     val minutes = (totalListenMs / 60000L).coerceAtLeast(0)
@@ -520,3 +585,4 @@ private fun listeningLabel(totalListenMs: Long): String {
         else -> "${minutes / 60}h"
     }
 }
+

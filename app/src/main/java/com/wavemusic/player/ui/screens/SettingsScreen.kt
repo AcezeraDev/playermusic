@@ -63,10 +63,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.wavemusic.player.data.AccentTheme
-import com.wavemusic.player.data.AudioQuality
-import com.wavemusic.player.data.EqualizerPreset
-import com.wavemusic.player.data.SleepTimerOption
+import com.wavemusic.player.data.model.AccentTheme
+import com.wavemusic.player.data.model.AudioQuality
+import com.wavemusic.player.data.model.EqualizerPreset
+import com.wavemusic.player.data.model.SleepTimerOption
+import com.wavemusic.player.ui.components.MusicIconCluster
+import com.wavemusic.player.ui.components.NeonCard
+import com.wavemusic.player.ui.components.SettingsItem
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -83,6 +86,7 @@ fun SettingsScreen(
     notificationsEnabled: Boolean,
     crossfadeEnabled: Boolean,
     continueListeningEnabled: Boolean,
+    resumePlaybackPositionEnabled: Boolean,
     sleepTimerLabel: String?,
     appVersion: String,
     onAudioQualitySelected: (AudioQuality) -> Unit,
@@ -91,6 +95,7 @@ fun SettingsScreen(
     onNotificationsChanged: (Boolean) -> Unit,
     onCrossfadeChanged: (Boolean) -> Unit,
     onContinueListeningChanged: (Boolean) -> Unit,
+    onResumePlaybackPositionChanged: (Boolean) -> Unit,
     onSleepTimerSelected: (SleepTimerOption?) -> Unit,
     onExportBackup: () -> String,
     onImportBackup: (String) -> Boolean,
@@ -110,7 +115,13 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Column {
+            NeonCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(34.dp),
+                colors = listOf(WavePurple, WaveBlue, WavePink),
+                contentPadding = PaddingValues(20.dp)
+            ) {
+                Column {
                 Text(
                     text = "Configurações",
                     color = WaveTextPrimary,
@@ -122,6 +133,12 @@ fun SettingsScreen(
                     color = WaveTextSecondary,
                     style = MaterialTheme.typography.bodyLarge
                 )
+                MusicIconCluster(
+                    modifier = Modifier.padding(top = 12.dp),
+                    icons = listOf(Icons.Rounded.GraphicEq, Icons.Rounded.Timer, Icons.Rounded.Notifications),
+                    colors = listOf(WaveBlue, WavePurple, WavePink)
+                )
+                }
             }
         }
 
@@ -162,6 +179,16 @@ fun SettingsScreen(
                 Switch(notificationsEnabled, onNotificationsChanged, colors = switchColors())
             }
         }
+        item {
+            SettingRow(
+                "Retomar minutagem",
+                if (resumePlaybackPositionEnabled) "Volta no mesmo ponto da mÃºsica" else "Sempre comeÃ§a do inÃ­cio",
+                Icons.Rounded.RestartAlt,
+                onClick = { onResumePlaybackPositionChanged(!resumePlaybackPositionEnabled) }
+            ) {
+                Switch(resumePlaybackPositionEnabled, onResumePlaybackPositionChanged, colors = switchColors())
+                }
+            }
         item {
             SettingRow("Widget", "Adicione o widget pela tela inicial do Android", Icons.Rounded.Widgets)
         }
@@ -237,36 +264,13 @@ private fun SettingRow(
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .clickable(enabled = onClick != null) { onClick?.invoke() },
-        color = WaveSurface.copy(alpha = 0.78f),
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(WavePurple, WaveBlue))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = WaveTextPrimary, modifier = Modifier.size(25.dp))
-            }
-            Spacer(modifier = Modifier.size(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = WaveTextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = WaveTextSecondary, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            trailing?.invoke()
-        }
-    }
+    SettingsItem(
+        title = title,
+        subtitle = subtitle,
+        icon = icon,
+        onClick = onClick,
+        trailing = trailing
+    )
 }
 
 @Composable
@@ -528,3 +532,4 @@ private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedContainerColor = WaveSurface.copy(alpha = 0.48f),
     cursorColor = WaveBlue
 )
+

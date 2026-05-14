@@ -39,7 +39,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.Music
+import com.wavemusic.player.data.model.Music
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
@@ -254,3 +254,4 @@ private fun colorSet(seed: Long): List<Color> {
     )
     return palettes[(seed.absoluteValue % palettes.size).toInt()]
 }
+

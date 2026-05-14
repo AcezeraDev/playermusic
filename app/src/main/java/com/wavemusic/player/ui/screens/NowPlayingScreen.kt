@@ -9,9 +9,15 @@ import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -39,17 +46,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
@@ -93,12 +102,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.wavemusic.player.data.Music
-import com.wavemusic.player.data.Playlist
-import com.wavemusic.player.data.formatDuration
+import com.wavemusic.player.data.model.Music
+import com.wavemusic.player.data.model.Playlist
+import com.wavemusic.player.data.model.formatDuration
 import com.wavemusic.player.ui.components.AlbumArtwork
 import com.wavemusic.player.ui.components.AnimatedIconButton
+import com.wavemusic.player.ui.components.GlassCard
+import com.wavemusic.player.ui.components.MusicIconCluster
 import com.wavemusic.player.ui.components.NeonVisualizer
+import com.wavemusic.player.ui.components.NeonCard
 import com.wavemusic.player.ui.theme.WaveBackground
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
@@ -147,6 +159,25 @@ fun NowPlayingScreen(
         targetValue = if (isPlaying) 1f else 0.96f,
         animationSpec = tween(durationMillis = 320),
         label = "artwork-scale"
+    )
+    val ambientTransition = rememberInfiniteTransition(label = "now-playing-ambient")
+    val ambientAlpha by ambientTransition.animateFloat(
+        initialValue = 0.24f,
+        targetValue = 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "now-playing-ambient-alpha"
+    )
+    val artworkRotation by ambientTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 70000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "now-playing-cover-rotation"
     )
     val artworkSway = remember(music.id) { Animatable(0f) }
 
@@ -208,8 +239,9 @@ fun NowPlayingScreen(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            WavePurple.copy(alpha = 0.34f),
+                            WavePurple.copy(alpha = ambientAlpha),
                             WaveBackground.copy(alpha = 0.92f),
+                            WaveBlue.copy(alpha = ambientAlpha * 0.34f),
                             WaveBackground
                         )
                     )
@@ -279,7 +311,7 @@ fun NowPlayingScreen(
                             .graphicsLayer {
                                 scaleX = artworkScale
                                 scaleY = artworkScale
-                                rotationZ = artworkSway.value
+                                rotationZ = artworkSway.value + if (isPlaying) artworkRotation else 0f
                             },
                         cornerRadius = 36.dp
                     )
@@ -288,26 +320,45 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            Text(
-                text = music.title,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = music.artist,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            Crossfade(targetState = music, label = "now-playing-track-crossfade") { displayedMusic ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = displayedMusic.title,
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = displayedMusic.artist,
+                        color = WaveTextSecondary,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            MusicIconCluster(
+                modifier = Modifier.padding(top = 10.dp),
+                icons = listOf(
+                    Icons.Rounded.MusicNote,
+                    Icons.Rounded.GraphicEq,
+                    Icons.AutoMirrored.Rounded.QueueMusic
+                ),
+                colors = listOf(WavePink, WaveBlue, WavePurple)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            GlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Column {
             NeonVisualizer(
                 isPlaying = isPlaying,
                 seed = music.id + 8,
@@ -334,9 +385,17 @@ fun NowPlayingScreen(
                 Text(formatDuration(positionMs), color = WaveTextSecondary)
                 Text(formatDuration(durationMs), color = WaveTextSecondary)
             }
+                }
+            }
 
             Spacer(modifier = Modifier.height(18.dp))
 
+            NeonCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(34.dp),
+                colors = listOf(WavePurple, WavePink),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -372,6 +431,7 @@ fun NowPlayingScreen(
                     contentDescription = "Repetir",
                     onClick = onToggleRepeat
                 )
+            }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -419,7 +479,7 @@ fun NowPlayingScreen(
                 }
                 RoundAction(
                     selected = false,
-                    icon = Icons.Rounded.QueueMusic,
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
                     label = "Fila",
                     onClick = { showQueue = true }
                 )
@@ -438,21 +498,19 @@ fun NowPlayingScreen(
             }
 
             AnimatedVisibility(visible = queueSongs.isNotEmpty()) {
-                Surface(
+                GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .clickable { showQueue = true },
-                    color = WaveSurface.copy(alpha = 0.72f),
                     shape = RoundedCornerShape(22.dp),
-                    tonalElevation = 0.dp
+                    contentPadding = PaddingValues(14.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Rounded.QueueMusic, null, tint = WaveBlue)
+                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = WaveBlue)
                         Spacer(modifier = Modifier.size(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Próxima na fila", color = WaveTextPrimary, fontWeight = FontWeight.Bold)
@@ -690,10 +748,21 @@ private fun RoundAction(
     label: String,
     onClick: () -> Unit
 ) {
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "round-action-selected-scale"
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         AnimatedIconButton(
             onClick = onClick,
-            modifier = Modifier.size(46.dp),
+            modifier = Modifier
+                .size(46.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                    shadowElevation = if (selected) 20f else 8f
+                },
             background = if (selected) {
                 Brush.linearGradient(listOf(WavePink, WavePurple))
             } else {
@@ -736,13 +805,13 @@ private fun QueueDialog(
     onClear: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        NeonCard(
             modifier = Modifier.fillMaxWidth(),
-            color = WaveSurface,
             shape = RoundedCornerShape(28.dp),
-            tonalElevation = 0.dp
+            colors = listOf(WavePurple, WaveBlue),
+            contentPadding = PaddingValues(18.dp)
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column {
                 DialogHeader("Fila de reprodução", "${queueSongs.size} músicas na fila", onDismiss)
 
                 Spacer(modifier = Modifier.size(12.dp))
@@ -789,13 +858,11 @@ private fun QueueRow(
     onMove: (Int, Int) -> Unit,
     onRemove: (Music) -> Unit
 ) {
-    Surface(
-        color = WaveSurfaceBright.copy(alpha = 0.36f),
+    GlassCard(
         shape = RoundedCornerShape(18.dp),
-        tonalElevation = 0.dp
+        contentPadding = PaddingValues(10.dp)
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AlbumArtwork(music, modifier = Modifier.size(44.dp), cornerRadius = 12.dp)
@@ -823,13 +890,13 @@ private fun LyricsDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        NeonCard(
             modifier = Modifier.fillMaxWidth(),
-            color = WaveSurface,
             shape = RoundedCornerShape(28.dp),
-            tonalElevation = 0.dp
+            colors = listOf(WavePink, WavePurple),
+            contentPadding = PaddingValues(18.dp)
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column {
                 DialogHeader("Letra", music.title, onDismiss)
                 Spacer(modifier = Modifier.size(12.dp))
                 Surface(
@@ -898,3 +965,4 @@ private fun shareMusic(context: Context, music: Music) {
         }
     }
 }
+

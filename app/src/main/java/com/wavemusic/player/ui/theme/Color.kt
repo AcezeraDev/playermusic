@@ -10,3 +10,4 @@ val WaveBlue = Color(0xFF22D3EE)
 val WavePink = Color(0xFFEC4899)
 val WaveTextPrimary = Color(0xFFF8FAFC)
 val WaveTextSecondary = Color(0xFFAAB4D0)
+

@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,13 +22,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlaylistRemove
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,13 +50,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
-import com.wavemusic.player.data.Music
-import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.model.Music
+import com.wavemusic.player.data.model.Playlist
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -73,29 +78,58 @@ fun MusicCard(
     isQueued: Boolean = false,
     onAddToQueue: (Music) -> Unit = {},
     onRemoveFromQueue: (Music) -> Unit = {},
+    onRemoveFromPlaylist: ((Music) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
+    val likeScale by animateFloatAsState(
+        targetValue = if (isLiked) 1.22f else 0.92f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 520f),
+        label = "music-card-like-pop"
+    )
 
-    AnimatedCard(
+    NeonCard(
         modifier = modifier
             .fillMaxWidth(),
         onClick = { onClick(music) },
-        shape = RoundedCornerShape(22.dp),
-        color = if (isCurrent) WaveSurface.copy(alpha = 0.98f) else WaveSurface.copy(alpha = 0.72f),
-        contentPadding = PaddingValues(12.dp),
-        pressedScale = 0.985f
+        shape = RoundedCornerShape(24.dp),
+        colors = if (isCurrent) listOf(WavePink, WaveBlue) else listOf(WavePurple, WaveSurfaceBright),
+        contentPadding = PaddingValues(12.dp)
     ) {
+        Column {
+            if (isCurrent) {
+                NeonVisualizer(
+                    isPlaying = true,
+                    seed = music.id,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(18.dp),
+                    bars = 18
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+            }
+
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AlbumArtwork(
-                music = music,
-                modifier = Modifier.size(62.dp),
-                cornerRadius = 18.dp
-            )
+            Box {
+                AlbumArtwork(
+                    music = music,
+                    modifier = Modifier.size(62.dp),
+                    cornerRadius = 18.dp
+                )
+                NeonIconOrb(
+                    icon = if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    size = 26.dp,
+                    iconSize = 14.dp,
+                    colors = if (isCurrent) listOf(WavePink, WaveBlue) else listOf(WavePurple, WaveSurfaceBright),
+                    active = isCurrent
+                )
+            }
 
             Spacer(modifier = Modifier.width(14.dp))
 
@@ -115,7 +149,13 @@ fun MusicCard(
                             imageVector = Icons.Rounded.Favorite,
                             contentDescription = "Música curtida",
                             tint = WavePink,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer {
+                                    scaleX = likeScale
+                                    scaleY = likeScale
+                                    shadowElevation = 12f
+                                }
                         )
                     }
                 }
@@ -188,7 +228,7 @@ fun MusicCard(
                         text = { Text(if (isQueued) "Excluir da fila" else "Adicionar à fila") },
                         leadingIcon = {
                             Icon(
-                                imageVector = if (isQueued) Icons.Rounded.PlaylistRemove else Icons.Rounded.QueueMusic,
+                                imageVector = if (isQueued) Icons.Rounded.PlaylistRemove else Icons.AutoMirrored.Rounded.QueueMusic,
                                 contentDescription = null
                             )
                         },
@@ -211,6 +251,22 @@ fun MusicCard(
                             showDetails = true
                         }
                     )
+
+                    if (onRemoveFromPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remover desta playlist") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.PlaylistRemove,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onRemoveFromPlaylist(music)
+                            }
+                        )
+                    }
 
                     HorizontalDivider()
 
@@ -252,6 +308,7 @@ fun MusicCard(
                 }
             }
         }
+        }
     }
 
     if (showDetails) {
@@ -268,13 +325,13 @@ private fun MusicDetailsDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        NeonCard(
             modifier = Modifier.fillMaxWidth(),
-            color = WaveSurface,
             shape = RoundedCornerShape(28.dp),
-            tonalElevation = 0.dp
+            colors = listOf(WavePurple, WavePink),
+            contentPadding = PaddingValues(18.dp)
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -378,3 +435,4 @@ private fun shareMusic(context: Context, music: Music) {
         }
     }
 }
+

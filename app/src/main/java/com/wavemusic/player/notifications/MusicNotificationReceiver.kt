@@ -3,10 +3,17 @@ package com.wavemusic.player.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.wavemusic.player.domain.player.WaveMusicPlaybackService
 
 class MusicNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        actionHandler?.invoke(intent.action.orEmpty())
+        val action = intent.action.orEmpty()
+        val handler = actionHandler
+        if (handler != null) {
+            handler(action)
+        } else if (action == ACTION_CLOSE) {
+            WaveMusicPlaybackService.stop(context)
+        }
     }
 
     companion object {
@@ -19,3 +26,4 @@ class MusicNotificationReceiver : BroadcastReceiver() {
         var actionHandler: ((String) -> Unit)? = null
     }
 }
+

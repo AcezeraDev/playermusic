@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.FilterChip
@@ -48,10 +50,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.wavemusic.player.data.Music
-import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.model.Music
+import com.wavemusic.player.data.model.Playlist
 import com.wavemusic.player.ui.components.AlbumArtwork
-import com.wavemusic.player.ui.components.MusicCard
+import com.wavemusic.player.ui.components.GradientHeader
+import com.wavemusic.player.ui.components.MusicListItem
+import com.wavemusic.player.ui.components.NeonCard
+import com.wavemusic.player.ui.components.NeonIconOrb
+import com.wavemusic.player.ui.components.SectionTitle
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -444,23 +450,14 @@ private fun SearchHeader(
                 )
             }
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        GradientHeader(
+            title = title,
+            subtitle = subtitle,
+            eyebrow = if (showBack) "RESULTADOS" else "BUSCA",
+            icon = Icons.Rounded.Search,
+            colors = listOf(WaveBlue, WavePurple, WavePink),
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -477,7 +474,7 @@ private fun SearchMusicCard(
     onAddToQueue: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit
 ) {
-    MusicCard(
+    MusicListItem(
         music = music,
         isCurrent = music.id == currentMusicId,
         isLiked = music.id in likedIds,
@@ -493,19 +490,14 @@ private fun SearchMusicCard(
 
 @Composable
 private fun SearchSectionTitle(title: String, subtitle: String) {
-    Column(modifier = Modifier.padding(top = 8.dp)) {
-        Text(
-            text = title,
-            color = WaveTextPrimary,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black
-        )
-        Text(
-            text = subtitle,
-            color = WaveTextSecondary,
-            style = MaterialTheme.typography.bodyMedium
-        )
+    val icon = when (title) {
+        "Músicas" -> Icons.Rounded.MusicNote
+        "Videos" -> Icons.Rounded.LibraryMusic
+        "Artistas" -> Icons.Rounded.Person
+        "Álbuns" -> Icons.Rounded.Album
+        else -> Icons.Rounded.Search
     }
+    SectionTitle(title = title, subtitle = subtitle, accent = WaveBlue, icon = icon)
 }
 
 @Composable
@@ -532,17 +524,16 @@ private fun CollectionResultRow(
     gradient: List<Color>,
     onClick: () -> Unit
 ) {
-    Surface(
+    NeonCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .clickable { onClick() },
-        color = WaveSurface.copy(alpha = 0.72f),
         shape = RoundedCornerShape(22.dp),
-        tonalElevation = 0.dp
+        colors = gradient,
+        contentPadding = PaddingValues(12.dp)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (music != null) {
@@ -588,19 +579,15 @@ private fun DefaultCollectionArtwork(
     gradient: List<Color>,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Brush.linearGradient(gradient.ifEmpty { listOf(WaveSurfaceBright, WavePurple) })),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = WaveTextPrimary,
-            modifier = Modifier.size(30.dp)
-        )
-    }
+    NeonIconOrb(
+        icon = icon,
+        contentDescription = null,
+        modifier = modifier,
+        size = 62.dp,
+        iconSize = 30.dp,
+        colors = gradient.ifEmpty { listOf(WaveSurfaceBright, WavePurple) },
+        active = true
+    )
 }
 
 private data class ArtistResult(
@@ -643,3 +630,4 @@ private enum class SearchFilter(val label: String) {
 private fun String.normalizedKey(): String {
     return trim().lowercase().ifBlank { "desconhecido" }
 }
+

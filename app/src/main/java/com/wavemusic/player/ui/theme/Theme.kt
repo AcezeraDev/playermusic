@@ -27,3 +27,4 @@ fun WaveMusicTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
+
