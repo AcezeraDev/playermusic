@@ -1,5 +1,11 @@
 package com.wavemusic.player.ui.components
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +15,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -31,14 +43,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
+import com.wavemusic.player.ui.theme.WavePurple
 import com.wavemusic.player.ui.theme.WaveSurface
+import com.wavemusic.player.ui.theme.WaveSurfaceBright
 import com.wavemusic.player.ui.theme.WaveTextPrimary
 import com.wavemusic.player.ui.theme.WaveTextSecondary
 
@@ -53,7 +70,9 @@ fun MusicCard(
     onAddToPlaylist: (Music, Playlist) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
 
     Surface(
         modifier = modifier
@@ -147,8 +166,37 @@ fun MusicCard(
                         }
                     )
 
+                    DropdownMenuItem(
+                        text = { Text("Compartilhar música") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            shareMusic(context, music)
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Ver detalhes da música") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Info,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            showDetails = true
+                        }
+                    )
+
+                    HorizontalDivider()
+
                     if (playlists.isNotEmpty()) {
-                        HorizontalDivider()
                         Text(
                             text = "Adicionar à playlist",
                             color = WaveTextSecondary,
@@ -170,9 +218,142 @@ fun MusicCard(
                                 }
                             )
                         }
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("Crie uma playlist na Biblioteca") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                    contentDescription = null
+                                )
+                            },
+                            enabled = false,
+                            onClick = {}
+                        )
                     }
                 }
             }
+        }
+    }
+
+    if (showDetails) {
+        MusicDetailsDialog(
+            music = music,
+            onDismiss = { showDetails = false }
+        )
+    }
+}
+
+@Composable
+private fun MusicDetailsDialog(
+    music: Music,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = WaveSurface,
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 0.dp
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(WavePurple, WavePink))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = WaveTextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Detalhes da música",
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "Informações lidas do dispositivo",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.size(16.dp))
+
+                DetailRow("Música", music.title)
+                DetailRow("Artista", music.artist)
+                DetailRow("Álbum", music.album)
+                DetailRow("Duração", music.duration)
+                DetailRow("ID local", music.id.toString())
+
+                Spacer(modifier = Modifier.size(16.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
+                    shape = RoundedCornerShape(100.dp)
+                ) {
+                    Text("Fechar")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        color = WaveSurfaceBright.copy(alpha = 0.36f),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = label,
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = value,
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private fun shareMusic(context: Context, music: Music) {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "audio/*"
+        putExtra(Intent.EXTRA_STREAM, music.uri)
+        putExtra(Intent.EXTRA_TEXT, "Estou ouvindo ${music.title} - ${music.artist} no Wave Music.")
+        clipData = ClipData.newUri(context.contentResolver, music.title, music.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    runCatching {
+        context.startActivity(Intent.createChooser(shareIntent, "Compartilhar música"))
+    }.onFailure { error ->
+        if (error is ActivityNotFoundException) {
+            Toast.makeText(context, "Nenhum app disponível para compartilhar.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Não foi possível compartilhar esta música.", Toast.LENGTH_SHORT).show()
         }
     }
 }

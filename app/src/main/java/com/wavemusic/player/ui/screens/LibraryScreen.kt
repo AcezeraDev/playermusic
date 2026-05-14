@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Checkbox
@@ -82,6 +83,7 @@ fun LibraryScreen(
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onCreatePlaylist: (String, List<Long>) -> Unit,
+    onUpdatePlaylist: (Playlist, String, List<Long>) -> Unit,
     onDeletePlaylist: (Playlist) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onRemoveFromPlaylist: (Music, Playlist) -> Unit,
@@ -91,6 +93,7 @@ fun LibraryScreen(
     var selectedName by rememberSaveable { mutableStateOf("") }
     var selectedPlaylistId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var playlistForEdit by remember { mutableStateOf<Playlist?>(null) }
     var playlistNotice by rememberSaveable { mutableStateOf<String?>(null) }
 
     val sections = listOf(
@@ -200,6 +203,7 @@ fun LibraryScreen(
                                 selectedName = playlist.name
                                 page = "playlistSongs"
                             },
+                            onEdit = { playlistForEdit = playlist },
                             onDelete = { onDeletePlaylist(playlist) }
                         )
                     }
@@ -211,11 +215,20 @@ fun LibraryScreen(
                 val playlistSongs = playlist?.songIds.orEmpty()
                     .mapNotNull { id -> songs.firstOrNull { it.id == id } }
 
+                if (playlist != null) {
+                    item {
+                        PlaylistActions(
+                            playlist = playlist,
+                            onEdit = { playlistForEdit = playlist }
+                        )
+                    }
+                }
+
                 if (playlist == null || playlistSongs.isEmpty()) {
                     item {
                         EmptyMusicScreen(
                             title = "Playlist vazia",
-                            message = "Adicione músicas pelo botão de opções na lista inicial ou na busca."
+                            message = "Toque em editar playlist para adicionar músicas ou use o menu de opções de cada faixa."
                         )
                     }
                 } else {
@@ -318,6 +331,26 @@ fun LibraryScreen(
                 }
                 showCreatePlaylistDialog = false
                 page = "playlists"
+            }
+        )
+    }
+
+    playlistForEdit?.let { playlist ->
+        EditPlaylistDialog(
+            playlist = playlist,
+            songs = songs,
+            onDismiss = { playlistForEdit = null },
+            onConfirm = { name, selectedSongIds ->
+                onUpdatePlaylist(playlist, name, selectedSongIds)
+                if (selectedPlaylistId == playlist.id) {
+                    selectedName = name.trim()
+                }
+                playlistNotice = if (selectedSongIds.isEmpty()) {
+                    "Playlist salva vazia. Você pode adicionar músicas quando quiser."
+                } else {
+                    "Playlist atualizada com ${selectedSongIds.size} músicas."
+                }
+                playlistForEdit = null
             }
         )
     }
@@ -469,6 +502,50 @@ private fun PlaylistCreator(onCreateClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.size(8.dp))
                 Text("Criar playlist")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistActions(
+    playlist: Playlist,
+    onEdit: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = WavePurple.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Organizar playlist",
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${playlist.songIds.size} músicas selecionadas",
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Button(
+                onClick = onEdit,
+                colors = ButtonDefaults.buttonColors(containerColor = WaveBlue),
+                shape = RoundedCornerShape(100.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Editar")
             }
         }
     }
@@ -641,6 +718,116 @@ private fun CreatePlaylistDialog(
 }
 
 @Composable
+private fun EditPlaylistDialog(
+    playlist: Playlist,
+    songs: List<Music>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, List<Long>) -> Unit
+) {
+    var playlistName by remember(playlist.id) { mutableStateOf(playlist.name) }
+    var showNameError by remember { mutableStateOf(false) }
+    var selectedIds by remember(playlist.id) { mutableStateOf(playlist.songIds.toSet()) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = WaveSurface,
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 0.dp
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = "Editar playlist",
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "Altere o nome e marque as músicas que devem ficar nela.",
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.size(16.dp))
+
+                OutlinedTextField(
+                    value = playlistName,
+                    onValueChange = {
+                        playlistName = it
+                        showNameError = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Nome da playlist") },
+                    singleLine = true,
+                    isError = showNameError,
+                    supportingText = {
+                        if (showNameError) {
+                            Text("Informe um nome para salvar.")
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = playlistTextFieldColors()
+                )
+
+                Spacer(modifier = Modifier.size(12.dp))
+
+                if (songs.isEmpty()) {
+                    EmptyMusicScreen(
+                        title = "Nenhuma música disponível",
+                        message = "A playlist será salva sem músicas até o dispositivo ter arquivos de áudio."
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(songs, key = { it.id }) { music ->
+                            SelectableSongRow(
+                                music = music,
+                                selected = music.id in selectedIds,
+                                onToggle = {
+                                    selectedIds = if (music.id in selectedIds) {
+                                        selectedIds - music.id
+                                    } else {
+                                        selectedIds + music.id
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.size(18.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancelar", color = WaveTextSecondary)
+                    }
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Button(
+                        onClick = {
+                            if (playlistName.trim().isBlank()) {
+                                showNameError = true
+                            } else {
+                                onConfirm(playlistName.trim(), selectedIds.toList())
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = WavePink),
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Text(if (selectedIds.isEmpty()) "Salvar vazia" else "Salvar playlist")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SelectableSongRow(
     music: Music,
     selected: Boolean,
@@ -714,6 +901,7 @@ private fun playlistTextFieldColors() = OutlinedTextFieldDefaults.colors(
 private fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Surface(
@@ -742,10 +930,17 @@ private fun PlaylistRow(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "${playlist.songIds.size} músicas",
-                    color = WaveTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium
+            Text(
+                text = "${playlist.songIds.size} músicas",
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Editar playlist",
+                    tint = WaveBlue
                 )
             }
             IconButton(onClick = onDelete) {

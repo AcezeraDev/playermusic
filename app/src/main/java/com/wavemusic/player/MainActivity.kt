@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -35,6 +36,9 @@ import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.LibraryStorage
 import com.wavemusic.player.data.MusicStore
 import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.UserPreferences
+import com.wavemusic.player.notifications.MusicNotificationReceiver
+import com.wavemusic.player.notifications.WaveMusicNotificationController
 import com.wavemusic.player.ui.components.BottomNavigationBar
 import com.wavemusic.player.ui.components.MiniPlayer
 import com.wavemusic.player.ui.components.WaveTab
@@ -64,6 +68,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun WaveMusicApp() {
     val context = LocalContext.current
+    val userPreferences = remember { UserPreferences(context.applicationContext) }
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -74,9 +79,39 @@ private fun WaveMusicApp() {
             ContextCompat.checkSelfPermission(context, audioPermission) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var audioQuality by remember { mutableStateOf(userPreferences.loadAudioQuality()) }
+    var notificationsEnabled by remember {
+        mutableStateOf(userPreferences.loadMediaNotificationsEnabled() && hasNotificationPermission)
+    }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasPermission = granted }
+    )
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            hasNotificationPermission = granted
+            notificationsEnabled = granted
+            userPreferences.saveMediaNotificationsEnabled(granted)
+            Toast.makeText(
+                context,
+                if (granted) {
+                    "Controles de mídia ativados nas notificações."
+                } else {
+                    "Permissão negada. As notificações continuam desativadas."
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     )
 
     var songs by remember { mutableStateOf<List<Music>>(emptyList()) }
@@ -88,6 +123,7 @@ private fun WaveMusicApp() {
     var durationMs by remember { mutableLongStateOf(0L) }
     var isLoadingSongs by remember { mutableStateOf(false) }
     val mediaPlayer = remember { MediaPlayer() }
+    val notificationController = remember { WaveMusicNotificationController(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val libraryStorage = remember { LibraryStorage(context.applicationContext) }
     var likedIds by remember { mutableStateOf(libraryStorage.loadLikedIds()) }
@@ -126,6 +162,11 @@ private fun WaveMusicApp() {
             isPlaying = true
         }.onFailure {
             isPlaying = false
+            Toast.makeText(
+                context,
+                "Não foi possível tocar esta música. Verifique se o arquivo ainda existe.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -189,6 +230,20 @@ private fun WaveMusicApp() {
         libraryStorage.savePlaylists(playlists)
     }
 
+    fun updatePlaylist(playlist: Playlist, name: String, songIds: List<Long>) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+
+        playlists = playlists.map {
+            if (it.id == playlist.id) {
+                it.copy(name = cleanName, songIds = songIds.distinct())
+            } else {
+                it
+            }
+        }
+        libraryStorage.savePlaylists(playlists)
+    }
+
     fun addToPlaylist(music: Music, playlist: Playlist) {
         playlists = playlists.map {
             if (it.id == playlist.id && music.id !in it.songIds) {
@@ -198,6 +253,35 @@ private fun WaveMusicApp() {
             }
         }
         libraryStorage.savePlaylists(playlists)
+    }
+
+    fun updateAudioQuality(quality: com.wavemusic.player.data.AudioQuality) {
+        audioQuality = quality
+        userPreferences.saveAudioQuality(quality)
+        Toast.makeText(
+            context,
+            "Qualidade salva. Arquivos locais continuam na qualidade original.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun setMediaNotificationsEnabled(enabled: Boolean) {
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        notificationsEnabled = enabled
+        userPreferences.saveMediaNotificationsEnabled(enabled)
+        if (!enabled) {
+            notificationController.cancel()
+        }
+
+        Toast.makeText(
+            context,
+            if (enabled) "Controles de mídia ativados." else "Controles de mídia desativados.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun removeFromPlaylist(music: Music, playlist: Playlist) {
@@ -231,8 +315,38 @@ private fun WaveMusicApp() {
         }
     }
 
+    LaunchedEffect(
+        notificationsEnabled,
+        hasNotificationPermission,
+        currentMusic?.id,
+        currentMusic?.title,
+        isPlaying
+    ) {
+        val music = currentMusic
+        if (notificationsEnabled && hasNotificationPermission && music != null) {
+            notificationController.show(music, isPlaying)
+        } else {
+            notificationController.cancel()
+        }
+    }
+
+    DisposableEffect(songs, currentMusic?.id, isPlaying) {
+        MusicNotificationReceiver.actionHandler = { action ->
+            when (action) {
+                MusicNotificationReceiver.ACTION_PLAY_PAUSE -> togglePlayPause()
+                MusicNotificationReceiver.ACTION_NEXT -> playNext()
+                MusicNotificationReceiver.ACTION_PREVIOUS -> playPrevious()
+            }
+        }
+
+        onDispose {
+            MusicNotificationReceiver.actionHandler = null
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
+            notificationController.cancel()
             mediaPlayer.release()
         }
     }
@@ -325,11 +439,18 @@ private fun WaveMusicApp() {
                             onSongClick = ::playMusic,
                             onToggleLike = ::toggleLike,
                             onCreatePlaylist = ::createPlaylist,
+                            onUpdatePlaylist = ::updatePlaylist,
                             onDeletePlaylist = ::deletePlaylist,
                             onAddToPlaylist = ::addToPlaylist,
                             onRemoveFromPlaylist = ::removeFromPlaylist
                         )
-                        WaveTab.Settings -> SettingsScreen()
+                        WaveTab.Settings -> SettingsScreen(
+                            audioQuality = audioQuality,
+                            notificationsEnabled = notificationsEnabled,
+                            appVersion = BuildConfig.VERSION_NAME,
+                            onAudioQualitySelected = ::updateAudioQuality,
+                            onNotificationsChanged = ::setMediaNotificationsEnabled
+                        )
                     }
                 }
             }
