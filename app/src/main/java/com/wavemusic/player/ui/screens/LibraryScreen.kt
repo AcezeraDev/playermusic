@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
@@ -907,6 +909,7 @@ private fun PlaylistEditorSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 26.dp)
         ) {
             Text(
@@ -988,7 +991,7 @@ private fun PlaylistEditorSheet(
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.heightIn(max = 320.dp),
+                    modifier = Modifier.heightIn(max = 220.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(songs, key = { it.id }) { music ->
@@ -1031,7 +1034,13 @@ private fun PlaylistEditorSheet(
                 ) {
                     Icon(Icons.Rounded.Save, contentDescription = null)
                     Spacer(modifier = Modifier.size(8.dp))
-                    Text(if (selectedIds.isEmpty()) "Salvar vazia" else "Salvar playlist")
+                    Text(
+                        when {
+                            playlist == null -> "Criar playlist"
+                            selectedIds.isEmpty() -> "Salvar vazia"
+                            else -> "Salvar playlist"
+                        }
+                    )
                 }
             }
         }
