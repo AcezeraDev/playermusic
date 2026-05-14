@@ -51,6 +51,7 @@ fun HomeScreen(
     currentMusicId: Long?,
     likedIds: Set<Long>,
     playlists: List<Playlist>,
+    isLoading: Boolean,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
@@ -85,7 +86,14 @@ fun HomeScreen(
             }
         }
 
-        if (songs.isNotEmpty()) {
+        if (isLoading) {
+            item {
+                EmptyMusicScreen(
+                    title = "Carregando músicas",
+                    message = "Estamos lendo os áudios do dispositivo. Isso pode levar alguns segundos na primeira vez."
+                )
+            }
+        } else if (songs.isNotEmpty()) {
             item {
                 FeaturedSongCard(
                     music = songs.first(),

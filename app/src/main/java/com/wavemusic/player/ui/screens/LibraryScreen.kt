@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,8 +26,11 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.ui.components.MusicCard
@@ -55,6 +61,7 @@ import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
 import com.wavemusic.player.ui.theme.WaveSurface
+import com.wavemusic.player.ui.theme.WaveSurfaceBright
 import com.wavemusic.player.ui.theme.WaveTextPrimary
 import com.wavemusic.player.ui.theme.WaveTextSecondary
 
@@ -74,7 +81,7 @@ fun LibraryScreen(
     playlists: List<Playlist>,
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
-    onCreatePlaylist: (String) -> Unit,
+    onCreatePlaylist: (String, List<Long>) -> Unit,
     onDeletePlaylist: (Playlist) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onRemoveFromPlaylist: (Music, Playlist) -> Unit,
@@ -83,6 +90,8 @@ fun LibraryScreen(
     var page by rememberSaveable { mutableStateOf("root") }
     var selectedName by rememberSaveable { mutableStateOf("") }
     var selectedPlaylistId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var playlistNotice by rememberSaveable { mutableStateOf<String?>(null) }
 
     val sections = listOf(
         LibrarySection(
@@ -163,7 +172,16 @@ fun LibraryScreen(
 
             "playlists" -> {
                 item {
-                    PlaylistCreator(onCreatePlaylist = onCreatePlaylist)
+                    PlaylistCreator(onCreateClick = { showCreatePlaylistDialog = true })
+                }
+
+                playlistNotice?.let { notice ->
+                    item {
+                        NoticeCard(
+                            message = notice,
+                            onDismiss = { playlistNotice = null }
+                        )
+                    }
                 }
 
                 if (playlists.isEmpty()) {
@@ -286,6 +304,23 @@ fun LibraryScreen(
             }
         }
     }
+
+    if (showCreatePlaylistDialog) {
+        CreatePlaylistDialog(
+            songs = songs,
+            onDismiss = { showCreatePlaylistDialog = false },
+            onConfirm = { name, selectedSongIds ->
+                onCreatePlaylist(name, selectedSongIds)
+                playlistNotice = if (selectedSongIds.isEmpty()) {
+                    "Playlist criada vazia. Você pode adicionar músicas pelo menu de opções de cada faixa."
+                } else {
+                    "Playlist criada com ${selectedSongIds.size} músicas."
+                }
+                showCreatePlaylistDialog = false
+                page = "playlists"
+            }
+        )
+    }
 }
 
 private fun LazyListScope.songItems(
@@ -402,9 +437,7 @@ private fun LibrarySectionCard(
 }
 
 @Composable
-private fun PlaylistCreator(onCreatePlaylist: (String) -> Unit) {
-    var playlistName by rememberSaveable { mutableStateOf("") }
-
+private fun PlaylistCreator(onCreateClick: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = WaveSurface.copy(alpha = 0.78f),
@@ -413,50 +446,269 @@ private fun PlaylistCreator(onCreatePlaylist: (String) -> Unit) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Nova playlist",
+                text = "Criar playlist",
                 color = WaveTextPrimary,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.size(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = playlistName,
-                    onValueChange = { playlistName = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Nome") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = WaveTextPrimary,
-                        unfocusedTextColor = WaveTextPrimary,
-                        focusedBorderColor = WaveBlue,
-                        unfocusedBorderColor = WaveSurface,
-                        focusedContainerColor = WaveSurface.copy(alpha = 0.62f),
-                        unfocusedContainerColor = WaveSurface.copy(alpha = 0.56f),
-                        cursorColor = WaveBlue,
-                        focusedPlaceholderColor = WaveTextSecondary,
-                        unfocusedPlaceholderColor = WaveTextSecondary
-                    )
+            Spacer(modifier = Modifier.size(6.dp))
+            Text(
+                text = "Escolha um nome e selecione as músicas que entram nela.",
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.size(14.dp))
+            Button(
+                onClick = onCreateClick,
+                colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
+                shape = RoundedCornerShape(100.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    contentDescription = null
                 )
-                Spacer(modifier = Modifier.size(10.dp))
-                Button(
-                    onClick = {
-                        val name = playlistName.trim()
-                        if (name.isNotEmpty()) {
-                            onCreatePlaylist(name)
-                            playlistName = ""
-                        }
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Criar playlist")
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoticeCard(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = WavePurple.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(22.dp),
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onDismiss) {
+                Text("Ok", color = WaveBlue)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatePlaylistDialog(
+    songs: List<Music>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, List<Long>) -> Unit
+) {
+    var step by rememberSaveable { mutableStateOf(1) }
+    var playlistName by rememberSaveable { mutableStateOf("") }
+    var showNameError by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = WaveSurface,
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 0.dp
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = if (step == 1) "Nova playlist" else playlistName.trim(),
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (step == 1) {
+                        "Dê um nome para sua coleção."
+                    } else {
+                        "Selecione uma ou várias músicas. Você também pode concluir sem selecionar."
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
-                    shape = RoundedCornerShape(100.dp)
-                ) {
-                    Text("Criar")
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.size(16.dp))
+
+                if (step == 1) {
+                    OutlinedTextField(
+                        value = playlistName,
+                        onValueChange = {
+                            playlistName = it
+                            showNameError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Nome da playlist") },
+                        singleLine = true,
+                        isError = showNameError,
+                        supportingText = {
+                            if (showNameError) {
+                                Text("Informe um nome para continuar.")
+                            }
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = playlistTextFieldColors()
+                    )
+
+                    Spacer(modifier = Modifier.size(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Cancelar", color = WaveTextSecondary)
+                        }
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Button(
+                            onClick = {
+                                if (playlistName.trim().isBlank()) {
+                                    showNameError = true
+                                } else {
+                                    step = 2
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
+                            shape = RoundedCornerShape(100.dp)
+                        ) {
+                            Text("Continuar")
+                        }
+                    }
+                } else {
+                    if (songs.isEmpty()) {
+                        EmptyMusicScreen(
+                            title = "Nenhuma música disponível",
+                            message = "A playlist será criada vazia. Quando houver músicas no aparelho, você poderá adicionar depois."
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 360.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(songs, key = { it.id }) { music ->
+                                SelectableSongRow(
+                                    music = music,
+                                    selected = music.id in selectedIds,
+                                    onToggle = {
+                                        selectedIds = if (music.id in selectedIds) {
+                                            selectedIds - music.id
+                                        } else {
+                                            selectedIds + music.id
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.size(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { step = 1 }) {
+                            Text("Voltar", color = WaveTextSecondary)
+                        }
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Button(
+                            onClick = {
+                                onConfirm(playlistName.trim(), selectedIds.toList())
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WavePink),
+                            shape = RoundedCornerShape(100.dp)
+                        ) {
+                            Text(if (selectedIds.isEmpty()) "Concluir vazia" else "Adicionar à playlist")
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun SelectableSongRow(
+    music: Music,
+    selected: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable { onToggle() },
+        color = if (selected) WavePurple.copy(alpha = 0.22f) else WaveSurface.copy(alpha = 0.68f),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggle() },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = WavePink,
+                    uncheckedColor = WaveTextSecondary,
+                    checkmarkColor = WaveTextPrimary
+                )
+            )
+            Spacer(modifier = Modifier.size(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = music.title,
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = music.artist,
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = music.duration,
+                color = WaveTextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun playlistTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = WaveTextPrimary,
+    unfocusedTextColor = WaveTextPrimary,
+    focusedBorderColor = WaveBlue,
+    unfocusedBorderColor = WaveSurfaceBright,
+    errorBorderColor = WavePink,
+    focusedContainerColor = WaveSurface.copy(alpha = 0.62f),
+    unfocusedContainerColor = WaveSurface.copy(alpha = 0.56f),
+    errorContainerColor = WaveSurface.copy(alpha = 0.56f),
+    cursorColor = WaveBlue,
+    focusedPlaceholderColor = WaveTextSecondary,
+    unfocusedPlaceholderColor = WaveTextSecondary
+)
 
 @Composable
 private fun PlaylistRow(

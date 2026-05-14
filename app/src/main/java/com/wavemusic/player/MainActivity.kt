@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,7 +45,10 @@ import com.wavemusic.player.ui.screens.SearchScreen
 import com.wavemusic.player.ui.screens.SettingsScreen
 import com.wavemusic.player.ui.theme.WaveBackground
 import com.wavemusic.player.ui.theme.WaveMusicTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,15 +86,31 @@ private fun WaveMusicApp() {
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
+    var isLoadingSongs by remember { mutableStateOf(false) }
     val mediaPlayer = remember { MediaPlayer() }
+    val coroutineScope = rememberCoroutineScope()
     val libraryStorage = remember { LibraryStorage(context.applicationContext) }
     var likedIds by remember { mutableStateOf(libraryStorage.loadLikedIds()) }
     var playlists by remember { mutableStateOf(libraryStorage.loadPlaylists()) }
 
     fun reloadSongs() {
-        songs = if (hasPermission) MusicStore.loadDeviceSongs(context) else emptyList()
-        if (currentMusic == null) {
-            currentMusic = songs.firstOrNull()
+        if (!hasPermission) {
+            songs = emptyList()
+            currentMusic = null
+            isLoadingSongs = false
+            return
+        }
+
+        coroutineScope.launch {
+            isLoadingSongs = true
+            val loadedSongs = withContext(Dispatchers.IO) {
+                MusicStore.loadDeviceSongs(context.applicationContext)
+            }
+            songs = loadedSongs
+            if (currentMusic == null || loadedSongs.none { it.id == currentMusic?.id }) {
+                currentMusic = loadedSongs.firstOrNull()
+            }
+            isLoadingSongs = false
         }
     }
 
@@ -152,14 +172,14 @@ private fun WaveMusicApp() {
         libraryStorage.saveLikedIds(likedIds)
     }
 
-    fun createPlaylist(name: String) {
+    fun createPlaylist(name: String, songIds: List<Long>) {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return
 
         playlists = playlists + Playlist(
             id = System.currentTimeMillis(),
             name = cleanName,
-            songIds = emptyList()
+            songIds = songIds.distinct()
         )
         libraryStorage.savePlaylists(playlists)
     }
@@ -278,6 +298,7 @@ private fun WaveMusicApp() {
                             currentMusicId = selectedMusic?.id,
                             likedIds = likedIds,
                             playlists = playlists,
+                            isLoading = isLoadingSongs,
                             hasPermission = hasPermission,
                             onRequestPermission = { permissionLauncher.launch(audioPermission) },
                             onRefresh = ::reloadSongs,
