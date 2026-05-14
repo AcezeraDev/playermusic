@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -40,16 +43,34 @@ fun SearchScreen(
     currentMusicId: Long?,
     likedIds: Set<Long>,
     playlists: List<Playlist>,
+    queuedIds: Set<Long>,
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
+    onAddToQueue: (Music) -> Unit,
+    onRemoveFromQueue: (Music) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(SearchFilter.All) }
     val filteredSongs = songs.filter {
-        it.title.contains(query, ignoreCase = true) ||
-            it.artist.contains(query, ignoreCase = true) ||
-            it.album.contains(query, ignoreCase = true)
+        val term = query.trim()
+        if (term.isBlank()) {
+            true
+        } else {
+            when (filter) {
+                SearchFilter.All -> it.title.contains(term, true) ||
+                    it.artist.contains(term, true) ||
+                    it.album.contains(term, true) ||
+                    it.duration.contains(term, true) ||
+                    it.folder.contains(term, true)
+                SearchFilter.Title -> it.title.contains(term, true)
+                SearchFilter.Artist -> it.artist.contains(term, true)
+                SearchFilter.Album -> it.album.contains(term, true)
+                SearchFilter.Duration -> it.duration.contains(term, true)
+                SearchFilter.Folder -> it.folder.contains(term, true)
+            }
+        }
     }
 
     Column(
@@ -70,6 +91,24 @@ fun SearchScreen(
         )
 
         Spacer(modifier = Modifier.height(18.dp))
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(SearchFilter.entries, key = { it.name }) { item ->
+                FilterChip(
+                    selected = filter == item,
+                    onClick = { filter = item },
+                    label = { Text(item.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = WaveBlue.copy(alpha = 0.2f),
+                        selectedLabelColor = WaveTextPrimary,
+                        containerColor = WaveSurface.copy(alpha = 0.56f),
+                        labelColor = WaveTextSecondary
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = query,
@@ -114,7 +153,10 @@ fun SearchScreen(
                     playlists = playlists,
                     onClick = onSongClick,
                     onToggleLike = onToggleLike,
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    isQueued = music.id in queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
                 )
             }
             if (filteredSongs.isEmpty()) {
@@ -127,4 +169,13 @@ fun SearchScreen(
             }
         }
     }
+}
+
+private enum class SearchFilter(val label: String) {
+    All("Tudo"),
+    Title("Música"),
+    Artist("Artista"),
+    Album("Álbum"),
+    Duration("Duração"),
+    Folder("Pasta")
 }

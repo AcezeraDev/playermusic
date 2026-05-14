@@ -35,9 +35,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.wavemusic.player.data.Music
+import com.wavemusic.player.data.PlaybackStats
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.ui.components.AlbumArtwork
 import com.wavemusic.player.ui.components.MusicCard
+import com.wavemusic.player.ui.components.NeonVisualizer
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -51,6 +53,9 @@ fun HomeScreen(
     currentMusicId: Long?,
     likedIds: Set<Long>,
     playlists: List<Playlist>,
+    recentIds: List<Long>,
+    playbackStats: PlaybackStats,
+    queueCount: Int,
     isLoading: Boolean,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
@@ -58,6 +63,9 @@ fun HomeScreen(
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
+    onAddToQueue: (Music) -> Unit,
+    onRemoveFromQueue: (Music) -> Unit,
+    queuedIds: Set<Long>,
     modifier: Modifier = Modifier
 ) {
     if (!hasPermission) {
@@ -103,6 +111,60 @@ fun HomeScreen(
             }
 
             item {
+                HomeStatsRow(
+                    songs = songs,
+                    likedCount = likedIds.size,
+                    queueCount = queueCount,
+                    totalListenMs = playbackStats.totalListenMs
+                )
+            }
+
+            val recentSongs = recentIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }.take(5)
+            if (recentSongs.isNotEmpty()) {
+                item {
+                    SectionTitle("Continuar ouvindo", "Histórico recente")
+                }
+                items(recentSongs, key = { "recent-${it.id}" }) { music ->
+                    MusicCard(
+                        music = music,
+                        isCurrent = music.id == currentMusicId,
+                        isLiked = music.id in likedIds,
+                        playlists = playlists,
+                        onClick = onSongClick,
+                        onToggleLike = onToggleLike,
+                        onAddToPlaylist = onAddToPlaylist,
+                        isQueued = music.id in queuedIds,
+                        onAddToQueue = onAddToQueue,
+                        onRemoveFromQueue = onRemoveFromQueue
+                    )
+                }
+            }
+
+            val mostPlayed = playbackStats.playCounts.entries
+                .sortedByDescending { it.value }
+                .mapNotNull { entry -> songs.firstOrNull { it.id == entry.key } }
+                .take(3)
+            if (mostPlayed.isNotEmpty()) {
+                item {
+                    SectionTitle("Mais tocadas", "Seu gosto aparecendo por aqui")
+                }
+                items(mostPlayed, key = { "top-${it.id}" }) { music ->
+                    MusicCard(
+                        music = music,
+                        isCurrent = music.id == currentMusicId,
+                        isLiked = music.id in likedIds,
+                        playlists = playlists,
+                        onClick = onSongClick,
+                        onToggleLike = onToggleLike,
+                        onAddToPlaylist = onAddToPlaylist,
+                        isQueued = music.id in queuedIds,
+                        onAddToQueue = onAddToQueue,
+                        onRemoveFromQueue = onRemoveFromQueue
+                    )
+                }
+            }
+
+            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -136,7 +198,10 @@ fun HomeScreen(
                     playlists = playlists,
                     onClick = onSongClick,
                     onToggleLike = onToggleLike,
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    isQueued = music.id in queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
                 )
             }
         } else {
@@ -302,5 +367,102 @@ private fun FeaturedSongCard(
                 cornerRadius = 28.dp
             )
         }
+    }
+}
+
+@Composable
+private fun HomeStatsRow(
+    songs: List<Music>,
+    likedCount: Int,
+    queueCount: Int,
+    totalListenMs: Long
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        StatCard(
+            label = "Músicas",
+            value = songs.size.toString(),
+            modifier = Modifier.weight(1f)
+        )
+        StatCard(
+            label = "Curtidas",
+            value = likedCount.toString(),
+            modifier = Modifier.weight(1f)
+        )
+        StatCard(
+            label = "Fila",
+            value = queueCount.toString(),
+            modifier = Modifier.weight(1f)
+        )
+        StatCard(
+            label = "Ouvido",
+            value = listeningLabel(totalListenMs),
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun StatCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(WaveSurface.copy(alpha = 0.68f))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        NeonVisualizer(
+            isPlaying = true,
+            seed = value.hashCode().toLong(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),
+            bars = 8
+        )
+        Text(
+            text = value,
+            color = WaveTextPrimary,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            maxLines = 1
+        )
+        Text(
+            text = label,
+            color = WaveTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, subtitle: String) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Text(
+            text = title,
+            color = WaveTextPrimary,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Black
+        )
+        Text(
+            text = subtitle,
+            color = WaveTextSecondary,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+private fun listeningLabel(totalListenMs: Long): String {
+    val minutes = (totalListenMs / 60000L).coerceAtLeast(0)
+    return when {
+        minutes < 60 -> "${minutes}m"
+        else -> "${minutes / 60}h"
     }
 }

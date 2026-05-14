@@ -8,6 +8,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -47,6 +50,7 @@ class WaveMusicNotificationController(
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
+            .setLargeIcon(loadAlbumArt(music))
             .setContentTitle(music.title)
             .setContentText(music.artist)
             .setSubText("Wave Music")
@@ -76,6 +80,16 @@ class WaveMusicNotificationController(
         runCatching {
             notificationManager.notify(NOTIFICATION_ID, notification)
         }
+    }
+
+    private fun loadAlbumArt(music: Music): Bitmap? {
+        return runCatching {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(context, music.uri)
+            val picture = retriever.embeddedPicture
+            retriever.release()
+            picture?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+        }.getOrNull()
     }
 
     fun cancel() {

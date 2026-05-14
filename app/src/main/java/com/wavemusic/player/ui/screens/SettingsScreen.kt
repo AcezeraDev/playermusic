@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DarkMode
@@ -23,13 +25,21 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
@@ -47,12 +57,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.wavemusic.player.data.AccentTheme
 import com.wavemusic.player.data.AudioQuality
+import com.wavemusic.player.data.EqualizerPreset
+import com.wavemusic.player.data.SleepTimerOption
 import com.wavemusic.player.ui.theme.WaveBlue
 import com.wavemusic.player.ui.theme.WavePink
 import com.wavemusic.player.ui.theme.WavePurple
@@ -64,15 +78,31 @@ import com.wavemusic.player.ui.theme.WaveTextSecondary
 @Composable
 fun SettingsScreen(
     audioQuality: AudioQuality,
+    equalizerPreset: EqualizerPreset,
+    accentTheme: AccentTheme,
     notificationsEnabled: Boolean,
+    crossfadeEnabled: Boolean,
+    continueListeningEnabled: Boolean,
+    sleepTimerLabel: String?,
     appVersion: String,
     onAudioQualitySelected: (AudioQuality) -> Unit,
+    onEqualizerSelected: (EqualizerPreset) -> Unit,
+    onAccentThemeSelected: (AccentTheme) -> Unit,
     onNotificationsChanged: (Boolean) -> Unit,
+    onCrossfadeChanged: (Boolean) -> Unit,
+    onContinueListeningChanged: (Boolean) -> Unit,
+    onSleepTimerSelected: (SleepTimerOption?) -> Unit,
+    onExportBackup: () -> String,
+    onImportBackup: (String) -> Boolean,
     modifier: Modifier = Modifier
 ) {
     var darkTheme by rememberSaveable { mutableStateOf(true) }
     var showAboutDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioQualityDialog by rememberSaveable { mutableStateOf(false) }
+    var showEqualizerDialog by rememberSaveable { mutableStateOf(false) }
+    var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    var showTimerDialog by rememberSaveable { mutableStateOf(false) }
+    var showBackupDialog by rememberSaveable { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -88,7 +118,7 @@ fun SettingsScreen(
                     fontWeight = FontWeight.Black
                 )
                 Text(
-                    text = "Preferências do Wave Music",
+                    text = "Preferências premium do Wave Music",
                     color = WaveTextSecondary,
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -96,74 +126,106 @@ fun SettingsScreen(
         }
 
         item {
-            SettingRow(
-                title = "Tema escuro",
-                subtitle = "Visual neon sempre ativo",
-                icon = Icons.Rounded.DarkMode,
-                onClick = { darkTheme = !darkTheme }
-            ) {
-                Switch(
-                    checked = darkTheme,
-                    onCheckedChange = { darkTheme = it },
-                    colors = switchColors()
-                )
+            SettingRow("Tema escuro", "Visual neon sempre ativo", Icons.Rounded.DarkMode, onClick = { darkTheme = !darkTheme }) {
+                Switch(darkTheme, { darkTheme = it }, colors = switchColors())
             }
         }
-
         item {
-            SettingRow(
-                title = "Qualidade do áudio",
-                subtitle = audioQuality.label,
-                icon = Icons.Rounded.GraphicEq,
-                onClick = { showAudioQualityDialog = true }
-            )
+            SettingRow("Tema neon", accentTheme.label, Icons.Rounded.Palette, onClick = { showThemeDialog = true })
         }
-
+        item {
+            SettingRow("Qualidade do áudio", audioQuality.label, Icons.Rounded.GraphicEq, onClick = { showAudioQualityDialog = true })
+        }
+        item {
+            SettingRow("Equalizador", equalizerPreset.label, Icons.Rounded.Tune, onClick = { showEqualizerDialog = true })
+        }
+        item {
+            SettingRow("Timer", sleepTimerLabel ?: "Desligado", Icons.Rounded.Timer, onClick = { showTimerDialog = true })
+        }
+        item {
+            SettingRow("Crossfade", "Fade suave ao iniciar músicas", Icons.Rounded.RestartAlt, onClick = { onCrossfadeChanged(!crossfadeEnabled) }) {
+                Switch(crossfadeEnabled, onCrossfadeChanged, colors = switchColors())
+            }
+        }
+        item {
+            SettingRow("Continuar ouvindo", "Retoma a última música carregada", Icons.Rounded.Save, onClick = { onContinueListeningChanged(!continueListeningEnabled) }) {
+                Switch(continueListeningEnabled, onContinueListeningChanged, colors = switchColors())
+            }
+        }
         item {
             SettingRow(
                 title = "Notificações",
-                subtitle = if (notificationsEnabled) {
-                    "Controles de mídia ativados"
-                } else {
-                    "Controles de mídia desativados"
-                },
+                subtitle = if (notificationsEnabled) "Controles de mídia ativados" else "Controles de mídia desativados",
                 icon = Icons.Rounded.Notifications,
                 onClick = { onNotificationsChanged(!notificationsEnabled) }
             ) {
-                Switch(
-                    checked = notificationsEnabled,
-                    onCheckedChange = onNotificationsChanged,
-                    colors = switchColors()
-                )
+                Switch(notificationsEnabled, onNotificationsChanged, colors = switchColors())
             }
         }
-
         item {
-            SettingRow(
-                title = "Sobre o app",
-                subtitle = "Wave Music $appVersion • Kotlin + Jetpack Compose",
-                icon = Icons.Rounded.Info,
-                onClick = { showAboutDialog = true }
-            )
+            SettingRow("Widget", "Adicione o widget pela tela inicial do Android", Icons.Rounded.Widgets)
+        }
+        item {
+            SettingRow("Backup local", "Exportar/importar playlists em JSON", Icons.Rounded.Backup, onClick = { showBackupDialog = true })
+        }
+        item {
+            SettingRow("Sobre o app", "Wave Music $appVersion • Kotlin + Jetpack Compose", Icons.Rounded.Info, onClick = { showAboutDialog = true })
         }
     }
 
     if (showAudioQualityDialog) {
-        AudioQualityDialog(
-            selectedQuality = audioQuality,
+        OptionDialog(
+            title = "Qualidade do áudio",
+            subtitle = "Arquivos locais são reproduzidos na qualidade original.",
+            options = AudioQuality.entries,
+            selected = audioQuality,
+            label = { it.label },
+            description = { it.description },
             onDismiss = { showAudioQualityDialog = false },
-            onConfirm = { selected ->
-                onAudioQualitySelected(selected)
-                showAudioQualityDialog = false
-            }
+            onConfirm = onAudioQualitySelected
         )
     }
-
-    if (showAboutDialog) {
-        AboutAppDialog(
-            appVersion = appVersion,
-            onDismiss = { showAboutDialog = false }
+    if (showEqualizerDialog) {
+        OptionDialog(
+            title = "Equalizador",
+            subtitle = "Preset aplicado quando o Android permite controlar o áudio local.",
+            options = EqualizerPreset.entries,
+            selected = equalizerPreset,
+            label = { it.label },
+            description = { "Preset ${it.label}" },
+            onDismiss = { showEqualizerDialog = false },
+            onConfirm = onEqualizerSelected
         )
+    }
+    if (showThemeDialog) {
+        OptionDialog(
+            title = "Tema neon",
+            subtitle = "Escolha a cor principal do app.",
+            options = AccentTheme.entries,
+            selected = accentTheme,
+            label = { it.label },
+            description = { "Gradiente ${it.label.lowercase()} para telas e controles." },
+            swatch = { it.primary },
+            onDismiss = { showThemeDialog = false },
+            onConfirm = onAccentThemeSelected
+        )
+    }
+    if (showTimerDialog) {
+        SleepTimerDialog(
+            activeLabel = sleepTimerLabel,
+            onDismiss = { showTimerDialog = false },
+            onConfirm = onSleepTimerSelected
+        )
+    }
+    if (showBackupDialog) {
+        BackupDialog(
+            onDismiss = { showBackupDialog = false },
+            onExportBackup = onExportBackup,
+            onImportBackup = onImportBackup
+        )
+    }
+    if (showAboutDialog) {
+        AboutAppDialog(appVersion = appVersion, onDismiss = { showAboutDialog = false })
     }
 }
 
@@ -195,28 +257,12 @@ private fun SettingRow(
                     .background(Brush.linearGradient(listOf(WavePurple, WaveBlue))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = WaveTextPrimary,
-                    modifier = Modifier.size(25.dp)
-                )
+                Icon(icon, null, tint = WaveTextPrimary, modifier = Modifier.size(25.dp))
             }
             Spacer(modifier = Modifier.size(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = WaveTextPrimary,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = subtitle,
-                    color = WaveTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(title, color = WaveTextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = WaveTextSecondary, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             trailing?.invoke()
         }
@@ -224,103 +270,150 @@ private fun SettingRow(
 }
 
 @Composable
-private fun AudioQualityDialog(
-    selectedQuality: AudioQuality,
+private fun <T> OptionDialog(
+    title: String,
+    subtitle: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    description: (T) -> String,
+    swatch: ((T) -> Color)? = null,
     onDismiss: () -> Unit,
-    onConfirm: (AudioQuality) -> Unit
+    onConfirm: (T) -> Unit
 ) {
-    var localSelection by remember(selectedQuality) { mutableStateOf(selectedQuality) }
+    var localSelection by remember(selected) { mutableStateOf(selected) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = WaveSurface,
-            shape = RoundedCornerShape(28.dp),
-            tonalElevation = 0.dp
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                DialogHeader(
-                    title = "Qualidade do áudio",
-                    subtitle = "Escolha sua preferência de reprodução.",
-                    onDismiss = onDismiss
-                )
-
-                Spacer(modifier = Modifier.size(12.dp))
-
-                AudioQuality.entries.forEach { quality ->
+        Surface(Modifier.fillMaxWidth(), color = WaveSurface, shape = RoundedCornerShape(28.dp), tonalElevation = 0.dp) {
+            Column(Modifier.padding(18.dp)) {
+                DialogHeader(title, subtitle, onDismiss)
+                Spacer(Modifier.size(12.dp))
+                options.forEach { option ->
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .clickable { localSelection = quality },
-                        color = if (quality == localSelection) {
-                            WavePurple.copy(alpha = 0.22f)
-                        } else {
-                            WaveSurfaceBright.copy(alpha = 0.36f)
-                        },
+                            .clickable { localSelection = option },
+                        color = if (option == localSelection) WavePurple.copy(alpha = 0.22f) else WaveSurfaceBright.copy(alpha = 0.36f),
                         shape = RoundedCornerShape(18.dp),
                         tonalElevation = 0.dp
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
-                                selected = quality == localSelection,
-                                onClick = { localSelection = quality },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = WavePink,
-                                    unselectedColor = WaveTextSecondary
-                                )
+                                selected = option == localSelection,
+                                onClick = { localSelection = option },
+                                colors = RadioButtonDefaults.colors(selectedColor = WavePink, unselectedColor = WaveTextSecondary)
                             )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = quality.label,
-                                    color = WaveTextPrimary,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
+                            swatch?.let {
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(it(option))
                                 )
-                                Text(
-                                    text = quality.description,
-                                    color = WaveTextSecondary,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                                Spacer(Modifier.size(10.dp))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(label(option), color = WaveTextPrimary, fontWeight = FontWeight.Bold)
+                                Text(description(option), color = WaveTextSecondary, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.size(8.dp))
+                    Spacer(Modifier.size(8.dp))
                 }
-
-                Surface(
-                    color = WaveBlue.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(18.dp),
-                    tonalElevation = 0.dp
-                ) {
-                    Text(
-                        text = "Aviso: como as músicas são arquivos locais, o Wave Music reproduz a qualidade original do arquivo. Esta preferência fica salva e pode ser usada quando houver fontes ajustáveis no futuro.",
-                        color = WaveTextSecondary,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(12.dp)
-                    )
+                Text(
+                    text = "Aviso: músicas locais já usam a qualidade do arquivo. Preferências avançadas são aplicadas quando o Android e o arquivo permitem.",
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(WaveBlue.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                )
+                Spacer(Modifier.size(16.dp))
+                DialogActions(onDismiss) {
+                    onConfirm(localSelection)
+                    onDismiss()
                 }
+            }
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.size(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancelar", color = WaveTextSecondary)
+@Composable
+private fun SleepTimerDialog(
+    activeLabel: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (SleepTimerOption?) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(Modifier.fillMaxWidth(), color = WaveSurface, shape = RoundedCornerShape(28.dp), tonalElevation = 0.dp) {
+            Column(Modifier.padding(18.dp)) {
+                DialogHeader("Timer", activeLabel?.let { "Ativo: $it" } ?: "Pausar automaticamente ao terminar.", onDismiss)
+                Spacer(Modifier.size(12.dp))
+                SleepTimerOption.entries.forEach { option ->
+                    TextButton(
+                        onClick = {
+                            onConfirm(option)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(option.label, color = WaveTextPrimary)
                     }
-                    Spacer(modifier = Modifier.size(8.dp))
+                }
+                HorizontalDivider(color = WaveSurfaceBright)
+                TextButton(
+                    onClick = {
+                        onConfirm(null)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Desligar timer", color = WavePink)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupDialog(
+    onDismiss: () -> Unit,
+    onExportBackup: () -> String,
+    onImportBackup: (String) -> Boolean
+) {
+    var backupText by remember { mutableStateOf(onExportBackup()) }
+    var message by remember { mutableStateOf("Copie o JSON para guardar seu backup local.") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(Modifier.fillMaxWidth(), color = WaveSurface, shape = RoundedCornerShape(28.dp), tonalElevation = 0.dp) {
+            Column(Modifier.padding(18.dp)) {
+                DialogHeader("Backup local", message, onDismiss)
+                Spacer(Modifier.size(12.dp))
+                OutlinedTextField(
+                    value = backupText,
+                    onValueChange = { backupText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = 320.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = textFieldColors()
+                )
+                Spacer(Modifier.size(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { backupText = onExportBackup(); message = "Backup exportado de novo." }) {
+                        Text("Exportar", color = WaveBlue)
+                    }
+                    Spacer(Modifier.size(8.dp))
                     Button(
-                        onClick = { onConfirm(localSelection) },
+                        onClick = {
+                            message = if (onImportBackup(backupText)) "Backup importado com sucesso." else "JSON inválido."
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = WavePink),
                         shape = RoundedCornerShape(100.dp)
                     ) {
-                        Text("Salvar")
+                        Text("Importar")
                     }
                 }
             }
@@ -329,85 +422,35 @@ private fun AudioQualityDialog(
 }
 
 @Composable
-private fun AboutAppDialog(
-    appVersion: String,
-    onDismiss: () -> Unit
-) {
+private fun AboutAppDialog(appVersion: String, onDismiss: () -> Unit) {
     var showChangelog by rememberSaveable { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = WaveSurface,
-            shape = RoundedCornerShape(28.dp),
-            tonalElevation = 0.dp
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                DialogHeader(
-                    title = "Wave Music",
-                    subtitle = "Player local moderno para suas músicas baixadas.",
-                    onDismiss = onDismiss
-                )
-
-                Spacer(modifier = Modifier.size(14.dp))
-
-                InfoLine(
-                    icon = Icons.Rounded.Info,
-                    title = "Versão",
-                    value = appVersion
-                )
-                InfoLine(
-                    icon = Icons.Rounded.Code,
-                    title = "Tecnologias",
-                    value = "Kotlin + Jetpack Compose + Material 3"
-                )
-                InfoLine(
-                    icon = Icons.Rounded.Person,
-                    title = "Desenvolvedor",
-                    value = "AcezeraDev"
-                )
-
-                Spacer(modifier = Modifier.size(8.dp))
+        Surface(Modifier.fillMaxWidth(), color = WaveSurface, shape = RoundedCornerShape(28.dp), tonalElevation = 0.dp) {
+            Column(Modifier.padding(18.dp)) {
+                DialogHeader("Wave Music", "Player local moderno para suas músicas baixadas.", onDismiss)
+                Spacer(Modifier.size(14.dp))
+                InfoLine(Icons.Rounded.Info, "Versão", appVersion)
+                InfoLine(Icons.Rounded.Code, "Tecnologias", "Kotlin + Jetpack Compose + Material 3")
+                InfoLine(Icons.Rounded.Person, "Desenvolvedor", "AcezeraDev")
+                Spacer(Modifier.size(8.dp))
                 HorizontalDivider(color = WaveSurfaceBright)
-                Spacer(modifier = Modifier.size(8.dp))
-
                 TextButton(onClick = { showChangelog = !showChangelog }) {
-                    Icon(
-                        imageVector = Icons.Rounded.NewReleases,
-                        contentDescription = null,
-                        tint = WaveBlue
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(
-                        text = if (showChangelog) "Ocultar novidades" else "Ver novidades",
-                        color = WaveBlue
-                    )
+                    Icon(Icons.Rounded.NewReleases, null, tint = WaveBlue)
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (showChangelog) "Ocultar novidades" else "Ver novidades", color = WaveBlue)
                 }
-
                 if (showChangelog) {
-                    Surface(
-                        color = WavePurple.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(18.dp),
-                        tonalElevation = 0.dp
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Changelog",
-                                color = WaveTextPrimary,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "• Configurações funcionais\n• Qualidade do áudio salva\n• Notificação com controles\n• Menus, detalhes e playlists melhorados",
-                                color = WaveTextSecondary,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
+                    Text(
+                        text = "• Fila e histórico\n• Estatísticas locais\n• Equalizador e timer\n• Backup JSON\n• Widget simples\n• Player visual premium",
+                        color = WaveTextSecondary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(WavePurple.copy(alpha = 0.16f))
+                            .padding(12.dp)
+                    )
                 }
-
-                Spacer(modifier = Modifier.size(16.dp))
-
+                Spacer(Modifier.size(12.dp))
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
@@ -422,47 +465,34 @@ private fun AboutAppDialog(
 }
 
 @Composable
-private fun DialogHeader(
-    title: String,
-    subtitle: String,
-    onDismiss: () -> Unit
-) {
+private fun DialogHeader(title: String, subtitle: String, onDismiss: () -> Unit) {
     Row(verticalAlignment = Alignment.Top) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = subtitle,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Text(title, color = WaveTextPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(subtitle, color = WaveTextSecondary, style = MaterialTheme.typography.bodyMedium)
         }
         IconButton(onClick = onDismiss) {
-            Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = "Fechar",
-                tint = WaveTextSecondary
-            )
+            Icon(Icons.Rounded.Close, "Fechar", tint = WaveTextSecondary)
         }
     }
 }
 
 @Composable
-private fun InfoLine(
-    icon: ImageVector,
-    title: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+private fun DialogActions(onDismiss: () -> Unit, onSave: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onDismiss) {
+            Text("Cancelar", color = WaveTextSecondary)
+        }
+        Spacer(Modifier.size(8.dp))
+        Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = WavePink), shape = RoundedCornerShape(100.dp)) {
+            Text("Salvar")
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(icon: ImageVector, title: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -470,26 +500,12 @@ private fun InfoLine(
                 .background(Brush.linearGradient(listOf(WavePurple, WavePink))),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = WaveTextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(icon, null, tint = WaveTextPrimary, modifier = Modifier.size(20.dp))
         }
-        Spacer(modifier = Modifier.size(12.dp))
+        Spacer(Modifier.size(12.dp))
         Column {
-            Text(
-                text = title,
-                color = WaveTextSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = value,
-                color = WaveTextPrimary,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Text(title, color = WaveTextSecondary, style = MaterialTheme.typography.bodySmall)
+            Text(value, color = WaveTextPrimary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -500,4 +516,15 @@ private fun switchColors() = SwitchDefaults.colors(
     checkedTrackColor = WavePurple,
     uncheckedThumbColor = WaveTextSecondary,
     uncheckedTrackColor = WaveSurfaceBright
+)
+
+@Composable
+private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = WaveTextPrimary,
+    unfocusedTextColor = WaveTextPrimary,
+    focusedBorderColor = WaveBlue,
+    unfocusedBorderColor = WaveSurfaceBright,
+    focusedContainerColor = WaveSurface.copy(alpha = 0.56f),
+    unfocusedContainerColor = WaveSurface.copy(alpha = 0.48f),
+    cursorColor = WaveBlue
 )

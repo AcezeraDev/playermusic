@@ -8,10 +8,21 @@ data class Music(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    val uri: Uri
+    val uri: Uri,
+    val folder: String = "Músicas",
+    val dateAddedSeconds: Long = 0L,
+    val sizeBytes: Long = 0L,
+    val mimeType: String = "audio/*"
 ) {
     val duration: String
         get() = formatDuration(durationMs)
+
+    val sizeLabel: String
+        get() {
+            if (sizeBytes <= 0L) return "Tamanho desconhecido"
+            val mb = sizeBytes / (1024f * 1024f)
+            return "%.1f MB".format(mb)
+        }
 }
 
 fun formatDuration(durationMs: Long): String {

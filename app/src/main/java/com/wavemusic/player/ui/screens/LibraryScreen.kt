@@ -27,6 +27,9 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Button
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.wavemusic.player.data.Music
+import com.wavemusic.player.data.PlaybackStats
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.ui.components.MusicCard
 import com.wavemusic.player.ui.theme.WaveBlue
@@ -80,6 +84,9 @@ fun LibraryScreen(
     currentMusicId: Long?,
     likedIds: Set<Long>,
     playlists: List<Playlist>,
+    recentIds: List<Long>,
+    playbackStats: PlaybackStats,
+    queuedIds: Set<Long>,
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onCreatePlaylist: (String, List<Long>) -> Unit,
@@ -87,6 +94,8 @@ fun LibraryScreen(
     onDeletePlaylist: (Playlist) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onRemoveFromPlaylist: (Music, Playlist) -> Unit,
+    onAddToQueue: (Music) -> Unit,
+    onRemoveFromQueue: (Music) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var page by rememberSaveable { mutableStateOf("root") }
@@ -124,6 +133,27 @@ fun LibraryScreen(
             icon = Icons.Rounded.Person,
             colors = listOf(WavePurple, WavePink),
             target = "artists"
+        ),
+        LibrarySection(
+            title = "Pastas",
+            subtitle = "${songs.map { it.folder }.distinct().size} pastas com músicas",
+            icon = Icons.Rounded.Folder,
+            colors = listOf(WaveBlue, WavePurple),
+            target = "folders"
+        ),
+        LibrarySection(
+            title = "Histórico",
+            subtitle = "${recentIds.size} músicas recentes",
+            icon = Icons.Rounded.History,
+            colors = listOf(WavePink, WaveBlue),
+            target = "history"
+        ),
+        LibrarySection(
+            title = "Estatísticas",
+            subtitle = "Mais tocadas e tempo ouvindo",
+            icon = Icons.Rounded.QueryStats,
+            colors = listOf(WavePurple, WavePink),
+            target = "stats"
         )
     )
 
@@ -142,6 +172,7 @@ fun LibraryScreen(
                         "albumSongs" -> "albums"
                         "artistSongs" -> "artists"
                         "playlistSongs" -> "playlists"
+                        "folderSongs" -> "folders"
                         else -> "root"
                     }
                     selectedName = ""
@@ -169,7 +200,10 @@ fun LibraryScreen(
                     playlists = playlists,
                     onSongClick = onSongClick,
                     onToggleLike = onToggleLike,
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
                 )
             }
 
@@ -240,9 +274,10 @@ fun LibraryScreen(
                             playlists = playlists,
                             onClick = onSongClick,
                             onToggleLike = onToggleLike,
-                            onAddToPlaylist = { song, selectedPlaylist ->
-                                onAddToPlaylist(song, selectedPlaylist)
-                            }
+                            onAddToPlaylist = { song, selectedPlaylist -> onAddToPlaylist(song, selectedPlaylist) },
+                            isQueued = music.id in queuedIds,
+                            onAddToQueue = onAddToQueue,
+                            onRemoveFromQueue = onRemoveFromQueue
                         )
                         Text(
                             text = "Remover desta playlist",
@@ -283,7 +318,10 @@ fun LibraryScreen(
                     playlists = playlists,
                     onSongClick = onSongClick,
                     onToggleLike = onToggleLike,
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
                 )
             }
 
@@ -312,7 +350,82 @@ fun LibraryScreen(
                     playlists = playlists,
                     onSongClick = onSongClick,
                     onToggleLike = onToggleLike,
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
+                )
+            }
+
+            "folders" -> {
+                val folders = songs.groupBy { it.folder.ifBlank { "Músicas" } }
+                items(folders.keys.sorted(), key = { it }) { folder ->
+                    CollectionRow(
+                        title = folder,
+                        subtitle = "${folders[folder].orEmpty().size} músicas",
+                        icon = Icons.Rounded.Folder,
+                        colors = listOf(WaveBlue, WavePurple),
+                        onClick = {
+                            selectedName = folder
+                            page = "folderSongs"
+                        }
+                    )
+                }
+            }
+
+            "folderSongs" -> {
+                val folderSongs = songs.filter { it.folder.ifBlank { "Músicas" } == selectedName }
+                songItems(
+                    songs = folderSongs,
+                    currentMusicId = currentMusicId,
+                    likedIds = likedIds,
+                    playlists = playlists,
+                    onSongClick = onSongClick,
+                    onToggleLike = onToggleLike,
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
+                )
+            }
+
+            "history" -> {
+                val recentSongs = recentIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+                songItems(
+                    songs = recentSongs,
+                    currentMusicId = currentMusicId,
+                    likedIds = likedIds,
+                    playlists = playlists,
+                    onSongClick = onSongClick,
+                    onToggleLike = onToggleLike,
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
+                )
+            }
+
+            "stats" -> {
+                item {
+                    StatsPanel(
+                        songs = songs,
+                        playbackStats = playbackStats
+                    )
+                }
+                val topSongs = playbackStats.playCounts.entries
+                    .sortedByDescending { it.value }
+                    .mapNotNull { entry -> songs.firstOrNull { it.id == entry.key } }
+                songItems(
+                    songs = topSongs,
+                    currentMusicId = currentMusicId,
+                    likedIds = likedIds,
+                    playlists = playlists,
+                    onSongClick = onSongClick,
+                    onToggleLike = onToggleLike,
+                    onAddToPlaylist = onAddToPlaylist,
+                    queuedIds = queuedIds,
+                    onAddToQueue = onAddToQueue,
+                    onRemoveFromQueue = onRemoveFromQueue
                 )
             }
         }
@@ -363,7 +476,10 @@ private fun LazyListScope.songItems(
     playlists: List<Playlist>,
     onSongClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
-    onAddToPlaylist: (Music, Playlist) -> Unit
+    onAddToPlaylist: (Music, Playlist) -> Unit,
+    queuedIds: Set<Long>,
+    onAddToQueue: (Music) -> Unit,
+    onRemoveFromQueue: (Music) -> Unit
 ) {
     if (songs.isEmpty()) {
         item {
@@ -381,7 +497,10 @@ private fun LazyListScope.songItems(
                 playlists = playlists,
                 onClick = onSongClick,
                 onToggleLike = onToggleLike,
-                onAddToPlaylist = onAddToPlaylist
+                onAddToPlaylist = onAddToPlaylist,
+                isQueued = music.id in queuedIds,
+                onAddToQueue = onAddToQueue,
+                onRemoveFromQueue = onRemoveFromQueue
             )
         }
     }
@@ -898,6 +1017,66 @@ private fun playlistTextFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
+private fun StatsPanel(
+    songs: List<Music>,
+    playbackStats: PlaybackStats
+) {
+    val topArtist = playbackStats.playCounts.entries
+        .sortedByDescending { it.value }
+        .mapNotNull { entry -> songs.firstOrNull { it.id == entry.key } }
+        .groupingBy { it.artist }
+        .eachCount()
+        .maxByOrNull { it.value }
+        ?.key ?: "Ainda sem dados"
+    val minutes = playbackStats.totalListenMs / 60000L
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = WaveSurface.copy(alpha = 0.78f),
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Resumo local",
+                color = WaveTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.size(12.dp))
+            StatLine("Músicas tocadas", playbackStats.playCounts.values.sum().toString())
+            StatLine("Tempo ouvindo", if (minutes < 60) "${minutes} min" else "${minutes / 60} h ${minutes % 60} min")
+            StatLine("Artista favorito", topArtist)
+        }
+    }
+}
+
+@Composable
+private fun StatLine(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = WaveTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = WaveTextPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
@@ -1031,6 +1210,10 @@ private fun titleForPage(page: String, selectedName: String): String {
         "albumSongs" -> selectedName
         "artists" -> "Artistas"
         "artistSongs" -> selectedName
+        "folders" -> "Pastas"
+        "folderSongs" -> selectedName
+        "history" -> "Histórico"
+        "stats" -> "Estatísticas"
         else -> "Biblioteca"
     }
 }
@@ -1046,6 +1229,9 @@ private fun subtitleForPage(
         "playlists", "playlistSongs" -> "${playlists.size} playlists criadas"
         "albums", "albumSongs" -> "${songs.map { it.album }.distinct().size} álbuns no dispositivo"
         "artists", "artistSongs" -> "${songs.map { it.artist }.distinct().size} artistas encontrados"
+        "folders", "folderSongs" -> "${songs.map { it.folder }.distinct().size} pastas com áudio"
+        "history" -> "Músicas que você tocou recentemente"
+        "stats" -> "Seus hábitos salvos localmente"
         else -> "${songs.size} músicas carregadas do dispositivo"
     }
 }

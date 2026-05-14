@@ -24,6 +24,8 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlaylistRemove
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -68,6 +70,9 @@ fun MusicCard(
     onClick: (Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
+    isQueued: Boolean = false,
+    onAddToQueue: (Music) -> Unit = {},
+    onRemoveFromQueue: (Music) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -177,6 +182,20 @@ fun MusicCard(
                         onClick = {
                             menuExpanded = false
                             shareMusic(context, music)
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text(if (isQueued) "Excluir da fila" else "Adicionar à fila") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (isQueued) Icons.Rounded.PlaylistRemove else Icons.Rounded.QueueMusic,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            if (isQueued) onRemoveFromQueue(music) else onAddToQueue(music)
                         }
                     )
 
@@ -293,6 +312,9 @@ private fun MusicDetailsDialog(
                 DetailRow("Artista", music.artist)
                 DetailRow("Álbum", music.album)
                 DetailRow("Duração", music.duration)
+                DetailRow("Pasta", music.folder)
+                DetailRow("Tipo", music.mimeType)
+                DetailRow("Tamanho", music.sizeLabel)
                 DetailRow("ID local", music.id.toString())
 
                 Spacer(modifier = Modifier.size(16.dp))
