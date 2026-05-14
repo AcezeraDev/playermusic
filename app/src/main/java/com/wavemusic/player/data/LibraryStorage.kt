@@ -89,6 +89,44 @@ class LibraryStorage(context: Context) {
         saveLongList(KEY_RECENTS, ids.take(MAX_RECENTS))
     }
 
+    fun loadResumePositions(): Map<Long, Long> {
+        val raw = prefs.getString(KEY_RESUME_POSITIONS, "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+
+        return runCatching {
+            val json = JSONObject(raw)
+            buildMap {
+                json.keys().forEach { key ->
+                    val id = key.toLongOrNull() ?: return@forEach
+                    val position = json.optLong(key, 0L)
+                    if (position >= RESUME_MIN_POSITION_MS) put(id, position)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun loadResumePosition(id: Long): Long {
+        return loadResumePositions()[id] ?: 0L
+    }
+
+    fun saveResumePosition(id: Long, positionMs: Long, durationMs: Long) {
+        val positions = loadResumePositions().toMutableMap()
+        val cleanPosition = positionMs.coerceAtLeast(0L)
+        val almostFinished = durationMs > 0L && durationMs - cleanPosition <= RESUME_END_THRESHOLD_MS
+
+        if (cleanPosition < RESUME_MIN_POSITION_MS || almostFinished) {
+            positions.remove(id)
+        } else {
+            positions[id] = cleanPosition
+        }
+
+        saveResumePositions(positions)
+    }
+
+    fun replaceResumePositions(positions: Map<Long, Long>) {
+        saveResumePositions(positions.filterValues { it >= RESUME_MIN_POSITION_MS })
+    }
+
     fun loadPlaybackStats(): PlaybackStats {
         val playCounts = prefs.getString(KEY_PLAY_COUNTS, "").orEmpty()
             .lineSequence()
@@ -118,6 +156,21 @@ class LibraryStorage(context: Context) {
             .apply()
     }
 
+    private fun saveResumePositions(positions: Map<Long, Long>) {
+        val sorted = positions.entries
+            .sortedByDescending { it.value }
+            .take(MAX_RESUME_POSITIONS)
+
+        val json = JSONObject()
+        sorted.forEach { (id, position) ->
+            json.put(id.toString(), position)
+        }
+
+        prefs.edit()
+            .putString(KEY_RESUME_POSITIONS, json.toString())
+            .apply()
+    }
+
     fun exportBackupJson(
         likedIds: Set<Long>,
         playlists: List<Playlist>,
@@ -143,6 +196,12 @@ class LibraryStorage(context: Context) {
             countsJson.put(id.toString(), count)
         }
         root.put("playCounts", countsJson)
+
+        val resumeJson = JSONObject()
+        loadResumePositions().forEach { (id, position) ->
+            resumeJson.put(id.toString(), position)
+        }
+        root.put("resumePositions", resumeJson)
 
         return root.toString(2)
     }
@@ -171,12 +230,22 @@ class LibraryStorage(context: Context) {
                 }
             }
 
+            val resumePositions = mutableMapOf<Long, Long>()
+            val resumeJson = root.optJSONObject("resumePositions") ?: JSONObject()
+            resumeJson.keys().forEach { key ->
+                key.toLongOrNull()?.let { id ->
+                    val position = resumeJson.optLong(key, 0L)
+                    if (position >= RESUME_MIN_POSITION_MS) resumePositions[id] = position
+                }
+            }
+
             LibraryBackup(
                 likedIds = likedIds,
                 playlists = playlists,
                 queueIds = queueIds,
                 playCounts = counts,
-                totalListenMs = root.optLong("totalListenMs", 0L)
+                totalListenMs = root.optLong("totalListenMs", 0L),
+                resumePositions = resumePositions
             )
         }.getOrNull()
     }
@@ -233,8 +302,12 @@ class LibraryStorage(context: Context) {
         const val KEY_PLAYLISTS = "playlists"
         const val KEY_QUEUE = "queue"
         const val KEY_RECENTS = "recents"
+        const val KEY_RESUME_POSITIONS = "resume_positions"
         const val KEY_PLAY_COUNTS = "play_counts"
         const val KEY_TOTAL_LISTEN_MS = "total_listen_ms"
         const val MAX_RECENTS = 30
+        const val MAX_RESUME_POSITIONS = 200
+        const val RESUME_MIN_POSITION_MS = 5_000L
+        const val RESUME_END_THRESHOLD_MS = 10_000L
     }
 }

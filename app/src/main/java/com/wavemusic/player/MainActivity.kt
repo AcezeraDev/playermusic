@@ -3,6 +3,7 @@ package com.wavemusic.player
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaMetadata
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
 import android.media.session.MediaSession
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -150,11 +152,13 @@ private fun WaveMusicApp() {
     var queueIds by remember { mutableStateOf(libraryStorage.loadQueueIds()) }
     var recentIds by remember { mutableStateOf(libraryStorage.loadRecentIds()) }
     var playbackStats by remember { mutableStateOf(libraryStorage.loadPlaybackStats()) }
+    var playbackSourceIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     var repeatEnabled by rememberSaveable { mutableStateOf(false) }
     var shuffleEnabled by rememberSaveable { mutableStateOf(false) }
     var sleepTimerEndAtMs by remember { mutableLongStateOf(0L) }
     var sleepTimerLabel by rememberSaveable { mutableStateOf<String?>(null) }
     var mediaNotificationDismissed by rememberSaveable { mutableStateOf(false) }
+    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
 
     val mediaPlayer = remember { MediaPlayer() }
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
@@ -164,6 +168,11 @@ private fun WaveMusicApp() {
     val coroutineScope = rememberCoroutineScope()
 
     fun queueSongs(): List<Music> = queueIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+
+    fun playbackSongs(): List<Music> {
+        val sourceSongs = playbackSourceIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+        return sourceSongs.ifEmpty { songs }
+    }
 
     fun saveQueue(ids: List<Long>) {
         queueIds = ids
@@ -207,19 +216,80 @@ private fun WaveMusicApp() {
         }
     }
 
+    fun saveCurrentPlaybackMemory() {
+        val music = currentMusic ?: return
+        val currentPosition = runCatching { mediaPlayer.currentPosition.toLong() }
+            .getOrDefault(positionMs)
+        val currentDuration = runCatching { mediaPlayer.duration.toLong() }
+            .getOrDefault(durationMs)
+            .takeIf { it > 0L }
+            ?: durationMs.takeIf { it > 0L }
+            ?: music.durationMs
+
+        libraryStorage.saveResumePosition(music.id, currentPosition, currentDuration)
+    }
+
+    fun isPlayerCurrentlyPlaying(): Boolean {
+        return runCatching { mediaPlayer.isPlaying }.getOrDefault(false)
+    }
+
+    fun resolveVideoAspectRatio(music: Music): Float {
+        if (!music.isVideo) return 16f / 9f
+
+        return runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, music.uri)
+                val width = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                    ?.toFloatOrNull()
+                    ?: mediaPlayer.videoWidth.toFloat()
+                val height = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    ?.toFloatOrNull()
+                    ?: mediaPlayer.videoHeight.toFloat()
+                val rotation = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    ?.toIntOrNull()
+                    ?: 0
+                val displayWidth = if (rotation % 180 == 0) width else height
+                val displayHeight = if (rotation % 180 == 0) height else width
+
+                (displayWidth / displayHeight)
+                    .takeIf { it.isFinite() && it > 0f }
+                    ?: 16f / 9f
+            } finally {
+                retriever.release()
+            }
+        }.getOrDefault(
+            (mediaPlayer.videoWidth.toFloat() / mediaPlayer.videoHeight.toFloat())
+                .takeIf { it.isFinite() && it > 0f }
+                ?: 16f / 9f
+        )
+    }
+
     fun playMusic(music: Music) {
         runCatching {
+            saveCurrentPlaybackMemory()
             mediaPlayer.reset()
             mediaPlayer.setDisplay(if (music.isVideo) videoSurfaceHolder else null)
             mediaPlayer.setDataSource(context, music.uri)
             mediaPlayer.prepare()
             rebuildEqualizer()
+            videoAspectRatio = resolveVideoAspectRatio(music)
+            val preparedDuration = mediaPlayer.duration.toLong().takeIf { it > 0 } ?: music.durationMs
+            val savedPosition = libraryStorage.loadResumePosition(music.id)
+                .takeIf { saved ->
+                    saved >= 5_000L && (preparedDuration <= 0L || saved < preparedDuration - 10_000L)
+                }
+                ?: 0L
+            if (savedPosition > 0L) mediaPlayer.seekTo(savedPosition.toInt())
             if (crossfadeEnabled) mediaPlayer.setVolume(0f, 0f)
             mediaPlayer.start()
             mediaSession.isActive = true
             currentMusic = music
-            durationMs = mediaPlayer.duration.toLong().takeIf { it > 0 } ?: music.durationMs
-            positionMs = 0L
+            durationMs = preparedDuration
+            positionMs = savedPosition
             isPlaying = true
             mediaNotificationDismissed = false
             if (music.isVideo) showNowPlaying = true
@@ -251,52 +321,80 @@ private fun WaveMusicApp() {
         }
     }
 
+    fun playMusicFromLibrary(music: Music) {
+        playbackSourceIds = songs.map { it.id }
+        saveQueue(emptyList())
+        playMusic(music)
+    }
+
+    fun playMusicFromSource(sourceSongs: List<Music>, music: Music) {
+        val cleanSource = sourceSongs.distinctBy { it.id }
+        playbackSourceIds = cleanSource.map { it.id }
+        saveQueue(emptyList())
+        playMusic(music)
+    }
+
     fun playNext() {
         if (songs.isEmpty()) return
-        val queuedId = queueIds.firstOrNull()
-        if (queuedId != null) {
-            saveQueue(queueIds.drop(1))
+        val validQueueIndex = queueIds.indexOfFirst { queuedId -> songs.any { it.id == queuedId } }
+        if (validQueueIndex >= 0) {
+            val queuedId = queueIds[validQueueIndex]
+            saveQueue(queueIds.drop(validQueueIndex + 1))
             songs.firstOrNull { it.id == queuedId }?.let(::playMusic)
             return
+        } else if (queueIds.isNotEmpty()) {
+            saveQueue(emptyList())
         }
 
-        val currentIndex = songs.indexOfFirst { it.id == currentMusic?.id }.coerceAtLeast(0)
-        val nextMusic = if (shuffleEnabled && songs.size > 1) {
-            songs.filterNot { it.id == currentMusic?.id }.random(Random(System.currentTimeMillis()))
+        val sourceSongs = playbackSongs()
+        if (sourceSongs.isEmpty()) return
+        val currentIndex = sourceSongs.indexOfFirst { it.id == currentMusic?.id }.coerceAtLeast(0)
+        val nextMusic = if (shuffleEnabled && sourceSongs.size > 1) {
+            sourceSongs.filterNot { it.id == currentMusic?.id }.random(Random(System.currentTimeMillis()))
         } else {
-            songs[(currentIndex + 1) % songs.size]
+            sourceSongs[(currentIndex + 1) % sourceSongs.size]
         }
         playMusic(nextMusic)
     }
 
     fun playPrevious() {
         if (songs.isEmpty()) return
-        val currentIndex = songs.indexOfFirst { it.id == currentMusic?.id }.coerceAtLeast(0)
-        playMusic(songs[(currentIndex - 1 + songs.size) % songs.size])
+        val sourceSongs = playbackSongs()
+        if (sourceSongs.isEmpty()) return
+        val currentIndex = sourceSongs.indexOfFirst { it.id == currentMusic?.id }.coerceAtLeast(0)
+        playMusic(sourceSongs[(currentIndex - 1 + sourceSongs.size) % sourceSongs.size])
     }
 
     fun togglePlayPause() {
         val music = currentMusic ?: songs.firstOrNull() ?: return
         if (currentMusic?.id != music.id || durationMs == 0L) {
-            playMusic(music)
+            playMusicFromLibrary(music)
             return
         }
-        if (mediaPlayer.isPlaying) {
-            mediaPlayer.pause()
+        if (isPlayerCurrentlyPlaying()) {
+            runCatching { mediaPlayer.pause() }
+            saveCurrentPlaybackMemory()
             isPlaying = false
         } else {
-            mediaSession.isActive = true
-            mediaNotificationDismissed = false
-            mediaPlayer.start()
-            isPlaying = true
+            runCatching {
+                mediaSession.isActive = true
+                mediaNotificationDismissed = false
+                mediaPlayer.start()
+                isPlaying = true
+            }.onFailure {
+                isPlaying = false
+                Toast.makeText(context, "Não foi possível retomar a reprodução.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     fun seekTo(progress: Float) {
         if (durationMs <= 0L) return
         val newPosition = (durationMs * progress.coerceIn(0f, 1f)).toLong()
-        mediaPlayer.seekTo(newPosition.toInt())
-        positionMs = newPosition
+        runCatching {
+            mediaPlayer.seekTo(newPosition.toInt())
+            positionMs = newPosition
+        }
     }
 
     fun reloadSongs() {
@@ -391,6 +489,10 @@ private fun WaveMusicApp() {
     }
 
     fun addToQueue(music: Music) {
+        if (music.id in queueIds) {
+            Toast.makeText(context, "Essa faixa já está na fila.", Toast.LENGTH_SHORT).show()
+            return
+        }
         saveQueue(queueIds + music.id)
         Toast.makeText(context, "Adicionado à fila.", Toast.LENGTH_SHORT).show()
     }
@@ -468,8 +570,9 @@ private fun WaveMusicApp() {
 
     fun closeMediaNotification() {
         runCatching {
-            if (mediaPlayer.isPlaying) mediaPlayer.pause()
+            if (isPlayerCurrentlyPlaying()) mediaPlayer.pause()
         }
+        saveCurrentPlaybackMemory()
         isPlaying = false
         mediaNotificationDismissed = true
         mediaSession.isActive = false
@@ -490,6 +593,7 @@ private fun WaveMusicApp() {
         libraryStorage.savePlaylists(playlists)
         libraryStorage.saveQueueIds(queueIds)
         libraryStorage.savePlaybackStats(playbackStats)
+        libraryStorage.replaceResumePositions(backup.resumePositions)
         return true
     }
 
@@ -497,12 +601,18 @@ private fun WaveMusicApp() {
         reloadSongs()
     }
 
-    LaunchedEffect(mediaPlayer, repeatEnabled, shuffleEnabled, queueIds, songs, currentMusic?.id) {
+    LaunchedEffect(mediaPlayer, repeatEnabled, shuffleEnabled, queueIds, playbackSourceIds, songs, currentMusic?.id) {
         mediaPlayer.setOnCompletionListener {
+            currentMusic?.let { libraryStorage.saveResumePosition(it.id, 0L, durationMs) }
+            positionMs = 0L
             if (repeatEnabled && currentMusic != null) {
-                mediaPlayer.seekTo(0)
-                mediaPlayer.start()
-                isPlaying = true
+                runCatching {
+                    mediaPlayer.seekTo(0)
+                    mediaPlayer.start()
+                    isPlaying = true
+                }.onFailure {
+                    isPlaying = false
+                }
             } else {
                 playNext()
             }
@@ -519,9 +629,13 @@ private fun WaveMusicApp() {
             }
             playbackStats = playbackStats.copy(totalListenMs = playbackStats.totalListenMs + 1000L)
             ticks += 1
-            if (ticks % 5 == 0) libraryStorage.savePlaybackStats(playbackStats)
+            if (ticks % 5 == 0) {
+                libraryStorage.savePlaybackStats(playbackStats)
+                currentMusic?.let { libraryStorage.saveResumePosition(it.id, positionMs, durationMs) }
+            }
         }
         libraryStorage.savePlaybackStats(playbackStats)
+        saveCurrentPlaybackMemory()
     }
 
     LaunchedEffect(sleepTimerEndAtMs) {
@@ -530,7 +644,8 @@ private fun WaveMusicApp() {
         val waitMs = (endAt - System.currentTimeMillis()).coerceAtLeast(0L)
         delay(waitMs)
         if (sleepTimerEndAtMs == endAt && isPlaying) {
-            mediaPlayer.pause()
+            runCatching { mediaPlayer.pause() }
+            saveCurrentPlaybackMemory()
             isPlaying = false
             sleepTimerEndAtMs = 0L
             sleepTimerLabel = null
@@ -649,6 +764,7 @@ private fun WaveMusicApp() {
     DisposableEffect(Unit) {
         onDispose {
             notificationController.cancel()
+            saveCurrentPlaybackMemory()
             runCatching { equalizer?.release() }
             runCatching { mediaPlayer.release() }
             runCatching { mediaSession.release() }
@@ -677,6 +793,7 @@ private fun WaveMusicApp() {
                 queueSongs = activeQueueSongs,
                 positionMs = positionMs,
                 durationMs = durationMs.takeIf { it > 0 } ?: selectedMusic.durationMs,
+                videoAspectRatio = videoAspectRatio,
                 repeatEnabled = repeatEnabled,
                 shuffleEnabled = shuffleEnabled,
                 onSeek = ::seekTo,
@@ -732,7 +849,7 @@ private fun WaveMusicApp() {
                             hasPermission = hasPermission,
                             onRequestPermission = { permissionLauncher.launch(mediaPermissions) },
                             onRefresh = ::reloadSongs,
-                            onSongClick = ::playMusic,
+                            onSongClick = ::playMusicFromLibrary,
                             onToggleLike = ::toggleLike,
                             onAddToPlaylist = ::addToPlaylist,
                             onAddToQueue = ::addToQueue,
@@ -746,7 +863,7 @@ private fun WaveMusicApp() {
                             likedIds = likedIds,
                             playlists = playlists,
                             queuedIds = queueIds.toSet(),
-                            onSongClick = ::playMusic,
+                            onSongClick = ::playMusicFromLibrary,
                             onToggleLike = ::toggleLike,
                             onAddToPlaylist = ::addToPlaylist,
                             onAddToQueue = ::addToQueue,
@@ -761,7 +878,8 @@ private fun WaveMusicApp() {
                             recentIds = recentIds,
                             playbackStats = playbackStats,
                             queuedIds = queueIds.toSet(),
-                            onSongClick = ::playMusic,
+                            onSongClick = ::playMusicFromLibrary,
+                            onPlaySongList = ::playMusicFromSource,
                             onToggleLike = ::toggleLike,
                             onCreatePlaylist = ::createPlaylist,
                             onUpdatePlaylist = ::updatePlaylist,

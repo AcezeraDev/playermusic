@@ -3,6 +3,18 @@ package com.wavemusic.player.ui.components
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -33,6 +45,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
 import kotlin.math.sin
 
+private data class ArtworkFrame(
+    val musicId: Long,
+    val bitmap: Bitmap?
+)
+
 @Composable
 fun AlbumArtwork(
     music: Music?,
@@ -41,8 +58,17 @@ fun AlbumArtwork(
 ) {
     val context = LocalContext.current
     var bitmap by remember(music?.id) { mutableStateOf<Bitmap?>(null) }
+    val transitionBurst = remember { Animatable(0f) }
 
     LaunchedEffect(music?.id) {
+        transitionBurst.snapTo(1f)
+        transitionBurst.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 760, easing = FastOutSlowInEasing)
+        )
+    }
+
+    LaunchedEffect(music?.id, music?.uri) {
         bitmap = music?.let {
             withContext(Dispatchers.IO) {
                 runCatching {
@@ -65,18 +91,110 @@ fun AlbumArtwork(
     Box(
         modifier = modifier.clip(RoundedCornerShape(cornerRadius))
     ) {
-        val art = bitmap
-        if (art != null) {
-            Image(
-                bitmap = art.asImageBitmap(),
-                contentDescription = "Capa do álbum",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            GeneratedArtwork(
-                seed = music?.id ?: 1L,
+        AnimatedContent(
+            targetState = ArtworkFrame(music?.id ?: -1L, bitmap),
+            transitionSpec = {
+                val direction = if (targetState.musicId >= initialState.musicId) 1 else -1
+                (
+                    fadeIn(animationSpec = tween(durationMillis = 260, delayMillis = 70)) +
+                        slideInHorizontally(
+                            animationSpec = tween(durationMillis = 540, easing = FastOutSlowInEasing),
+                            initialOffsetX = { width -> direction * width / 4 }
+                        ) +
+                        scaleIn(
+                            initialScale = 0.84f,
+                            animationSpec = tween(durationMillis = 540, easing = FastOutSlowInEasing)
+                        )
+                    ).togetherWith(
+                    fadeOut(animationSpec = tween(durationMillis = 180)) +
+                        slideOutHorizontally(
+                            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                            targetOffsetX = { width -> -direction * width / 6 }
+                        ) +
+                        scaleOut(
+                            targetScale = 1.08f,
+                            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing)
+                        )
+                ).using(SizeTransform(clip = false))
+            },
+            label = "artwork-sprite-transition"
+        ) { frame ->
+            ArtworkFrameContent(
+                frame = frame,
                 modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        SpriteTransitionBurst(
+            progress = transitionBurst.value,
+            seed = music?.id ?: 1L,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+private fun ArtworkFrameContent(
+    frame: ArtworkFrame,
+    modifier: Modifier = Modifier
+) {
+    val art = frame.bitmap
+    if (art != null) {
+        Image(
+            bitmap = art.asImageBitmap(),
+            contentDescription = "Capa do album",
+            modifier = modifier,
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        GeneratedArtwork(
+            seed = frame.musicId.takeIf { it > 0 } ?: 1L,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun SpriteTransitionBurst(
+    progress: Float,
+    seed: Long,
+    modifier: Modifier = Modifier
+) {
+    if (progress <= 0.01f) return
+
+    Canvas(modifier = modifier) {
+        val strength = progress.coerceIn(0f, 1f)
+        val reveal = 1f - strength
+        val sweepCenter = size.width * reveal
+        val sweepWidth = size.width * 0.52f
+
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    Color.White.copy(alpha = 0.22f * strength),
+                    Color.Transparent
+                ),
+                start = Offset(sweepCenter - sweepWidth, 0f),
+                end = Offset(sweepCenter + sweepWidth, size.height)
+            ),
+            size = size
+        )
+
+        drawCircle(
+            color = Color.White.copy(alpha = 0.12f * strength),
+            radius = size.minDimension * (0.24f + reveal * 0.72f),
+            center = Offset(size.width * 0.5f, size.height * 0.5f)
+        )
+
+        repeat(9) { index ->
+            val wave = sin((seed % 31 + index * 7) * 0.42f).absoluteValue
+            val x = size.width * ((index + 1) / 10f)
+            val y = size.height * (0.18f + wave * 0.64f)
+            drawCircle(
+                color = Color.White.copy(alpha = 0.2f * strength),
+                radius = size.minDimension * (0.012f + wave * 0.018f),
+                center = Offset(x, y)
             )
         }
     }

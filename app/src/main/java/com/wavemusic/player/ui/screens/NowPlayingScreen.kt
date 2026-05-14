@@ -7,6 +7,7 @@ import android.content.Intent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -16,10 +17,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +43,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -77,6 +82,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +92,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.data.formatDuration
@@ -110,6 +117,7 @@ fun NowPlayingScreen(
     queueSongs: List<Music>,
     positionMs: Long,
     durationMs: Long,
+    videoAspectRatio: Float = 16f / 9f,
     repeatEnabled: Boolean,
     shuffleEnabled: Boolean,
     onSeek: (Float) -> Unit,
@@ -132,6 +140,7 @@ fun NowPlayingScreen(
     var playlistMenuExpanded by remember { mutableStateOf(false) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var showFullscreenVideo by rememberSaveable(music.id) { mutableStateOf(false) }
     var dragAmount by remember { mutableFloatStateOf(0f) }
 
     val artworkScale by animateFloatAsState(
@@ -229,13 +238,38 @@ fun NowPlayingScreen(
                         .alpha(0.72f)
                 )
                 if (music.isVideo) {
-                    VideoSurface(
-                        onSurfaceReady = onVideoSurfaceReady,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(320.dp)
+                            .background(WaveSurface.copy(alpha = 0.78f), RoundedCornerShape(36.dp))
                             .clip(RoundedCornerShape(36.dp))
-                    )
+                    ) {
+                        if (!showFullscreenVideo) {
+                            AspectVideoSurface(
+                                onSurfaceReady = onVideoSurfaceReady,
+                                aspectRatio = videoAspectRatio,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        IconButton(
+                            onClick = { showFullscreenVideo = true },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                                .background(WaveSurface.copy(alpha = 0.82f), CircleShape)
+                        ) {
+                            Icon(Icons.Rounded.Fullscreen, "Tela cheia", tint = WaveTextPrimary)
+                        }
+                        if (showFullscreenVideo) {
+                            Text(
+                                text = "Abrindo tela cheia",
+                                color = WaveTextSecondary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+                    }
                 } else {
                     AlbumArtwork(
                         music = music,
@@ -441,11 +475,128 @@ fun NowPlayingScreen(
         )
     }
 
+    if (music.isVideo && showFullscreenVideo) {
+        FullscreenVideoDialog(
+            title = music.title,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            videoAspectRatio = videoAspectRatio,
+            onSeek = onSeek,
+            onPlayPause = onPlayPause,
+            onDismiss = { showFullscreenVideo = false },
+            onVideoSurfaceReady = onVideoSurfaceReady
+        )
+    }
+
     if (showLyrics) {
         LyricsDialog(
             music = music,
             onDismiss = { showLyrics = false }
         )
+    }
+}
+
+@Composable
+private fun FullscreenVideoDialog(
+    title: String,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    videoAspectRatio: Float,
+    onSeek: (Float) -> Unit,
+    onPlayPause: () -> Unit,
+    onDismiss: () -> Unit,
+    onVideoSurfaceReady: (SurfaceHolder?) -> Unit
+) {
+    val progress = if (durationMs > 0L) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    BackHandler(onBack = onDismiss)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            AspectVideoSurface(
+                onSurfaceReady = onVideoSurfaceReady,
+                aspectRatio = videoAspectRatio,
+                modifier = Modifier.fillMaxSize()
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .background(WaveBackground.copy(alpha = 0.76f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, "Sair da tela cheia", tint = WaveTextPrimary)
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.82f)
+                            )
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 12.dp)
+            ) {
+                Slider(
+                    value = progress,
+                    onValueChange = onSeek,
+                    colors = SliderDefaults.colors(
+                        thumbColor = WavePink,
+                        activeTrackColor = WavePink,
+                        inactiveTrackColor = WaveTextSecondary.copy(alpha = 0.34f)
+                    )
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onPlayPause) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) "Pausar" else "Tocar",
+                            tint = WaveTextPrimary,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                    Text(
+                        text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}",
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -467,6 +618,41 @@ private fun TopBar(onBack: () -> Unit) {
             modifier = Modifier.weight(1f)
         )
         Spacer(modifier = Modifier.size(48.dp))
+    }
+}
+
+@Composable
+private fun AspectVideoSurface(
+    onSurfaceReady: (SurfaceHolder?) -> Unit,
+    aspectRatio: Float,
+    modifier: Modifier = Modifier
+) {
+    val safeAspectRatio = aspectRatio
+        .takeIf { it.isFinite() && it > 0f }
+        ?.coerceIn(0.45f, 2.4f)
+        ?: 16f / 9f
+
+    BoxWithConstraints(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        val containerAspectRatio = (maxWidth.value / maxHeight.value)
+            .takeIf { it.isFinite() && it > 0f }
+            ?: safeAspectRatio
+        val videoModifier = if (containerAspectRatio > safeAspectRatio) {
+            Modifier
+                .fillMaxHeight()
+                .aspectRatio(safeAspectRatio)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(safeAspectRatio)
+        }
+
+        VideoSurface(
+            onSurfaceReady = onSurfaceReady,
+            modifier = videoModifier
+        )
     }
 }
 

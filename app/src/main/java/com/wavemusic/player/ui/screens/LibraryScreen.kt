@@ -107,6 +107,7 @@ fun LibraryScreen(
     playbackStats: PlaybackStats,
     queuedIds: Set<Long>,
     onSongClick: (Music) -> Unit,
+    onPlaySongList: (List<Music>, Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onCreatePlaylist: (String, String, String?, List<Long>) -> Unit,
     onUpdatePlaylist: (Playlist, String, String, String?, List<Long>) -> Unit,
@@ -201,9 +202,8 @@ fun LibraryScreen(
             playlistNotice = "Essa playlist ainda esta vazia."
             return
         }
-        onSongClick(firstSong)
-        selectedSongs.drop(1).forEach(onAddToQueue)
-        playlistNotice = "Tocando ${playlist.name}. Proximas faixas foram enviadas para a fila."
+        onPlaySongList(selectedSongs, firstSong)
+        playlistNotice = "Tocando ${playlist.name} na ordem da playlist."
     }
 
     Crossfade(
@@ -256,6 +256,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -354,7 +355,7 @@ fun LibraryScreen(
                                             isCurrent = music.id == currentMusicId,
                                             isLiked = music.id in likedIds,
                                             playlists = playlists,
-                                            onClick = onSongClick,
+                                            onClick = { selected -> onPlaySongList(selectedSongs, selected) },
                                             onToggleLike = onToggleLike,
                                             onAddToPlaylist = onAddToPlaylist,
                                             isQueued = music.id in queuedIds,
@@ -406,6 +407,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -444,6 +446,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -482,6 +485,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -500,6 +504,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -521,6 +526,7 @@ fun LibraryScreen(
                         likedIds = likedIds,
                         playlists = playlists,
                         onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
@@ -574,6 +580,7 @@ private fun LazyListScope.songItems(
     likedIds: Set<Long>,
     playlists: List<Playlist>,
     onSongClick: (Music) -> Unit,
+    onPlaySongList: (List<Music>, Music) -> Unit,
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     queuedIds: Set<Long>,
@@ -590,7 +597,7 @@ private fun LazyListScope.songItems(
                     isCurrent = music.id == currentMusicId,
                     isLiked = music.id in likedIds,
                     playlists = playlists,
-                    onClick = onSongClick,
+                    onClick = { selected -> onPlaySongList(songs, selected) },
                     onToggleLike = onToggleLike,
                     onAddToPlaylist = onAddToPlaylist,
                     isQueued = music.id in queuedIds,

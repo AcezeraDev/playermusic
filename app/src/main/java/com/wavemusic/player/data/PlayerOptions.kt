@@ -65,5 +65,6 @@ data class LibraryBackup(
     val playlists: List<Playlist>,
     val queueIds: List<Long>,
     val playCounts: Map<Long, Int>,
-    val totalListenMs: Long
+    val totalListenMs: Long,
+    val resumePositions: Map<Long, Long> = emptyMap()
 )
