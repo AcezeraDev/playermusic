@@ -1,6 +1,6 @@
 # Wave Music
 
-Wave Music é um player local para Android feito com Kotlin, Jetpack Compose e Material 3.
+Wave Music é um player local de musica para android
 
 ## Funcionalidades
 
@@ -23,3 +23,4 @@ Wave Music é um player local para Android feito com Kotlin, Jetpack Compose e M
 5. Aceite a permissão de áudio no app.
 
 O APK debug também está em `release/WaveMusic-debug.apk`.
+Pode baixar sem medo
