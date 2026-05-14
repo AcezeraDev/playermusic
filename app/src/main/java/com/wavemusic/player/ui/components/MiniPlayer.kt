@@ -1,9 +1,10 @@
 package com.wavemusic.player.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,22 +12,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,15 +47,22 @@ fun MiniPlayer(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 180f),
+        label = "mini-player-progress"
+    )
+
+    AnimatedCard(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .clickable(enabled = music != null) { onClick() },
-        color = WaveSurface.copy(alpha = 0.98f),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        enabled = music != null,
+        onClick = if (music != null) onClick else null,
         shape = RoundedCornerShape(26.dp),
-        tonalElevation = 0.dp
+        color = WaveSurface.copy(alpha = 0.98f),
+        contentPadding = PaddingValues(0.dp),
+        pressedScale = 0.985f
     ) {
         Column {
             Row(
@@ -74,7 +79,7 @@ fun MiniPlayer(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = music?.title ?: "Escolha uma música",
+                        text = music?.title ?: "Escolha uma musica",
                         color = WaveTextPrimary,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
@@ -82,7 +87,7 @@ fun MiniPlayer(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = music?.artist ?: "Suas músicas baixadas aparecem aqui",
+                        text = music?.artist ?: "Suas musicas baixadas aparecem aqui",
                         color = WaveTextSecondary,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -90,33 +95,38 @@ fun MiniPlayer(
                     )
                 }
 
-                IconButton(onClick = onPlayPause, enabled = music != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(WavePurple, WavePink))),
-                        contentAlignment = Alignment.Center
-                    ) {
+                AnimatedIconButton(
+                    onClick = onPlayPause,
+                    enabled = music != null,
+                    modifier = Modifier.size(42.dp),
+                    background = Brush.linearGradient(listOf(WavePurple, WavePink))
+                ) {
+                    Crossfade(targetState = isPlaying, label = "mini-player-play-icon") { playing ->
                         Icon(
-                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (isPlaying) "Pausar" else "Tocar",
+                            imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (playing) "Pausar" else "Tocar",
                             tint = WaveTextPrimary
                         )
                     }
                 }
 
-                IconButton(onClick = onNext, enabled = music != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                AnimatedIconButton(
+                    onClick = onNext,
+                    enabled = music != null,
+                    modifier = Modifier.size(42.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.SkipNext,
-                        contentDescription = "Próxima música",
+                        contentDescription = "Proxima musica",
                         tint = WaveBlue
                     )
                 }
             }
 
             LinearProgressIndicator(
-                progress = { progress.coerceIn(0f, 1f) },
+                progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(3.dp),

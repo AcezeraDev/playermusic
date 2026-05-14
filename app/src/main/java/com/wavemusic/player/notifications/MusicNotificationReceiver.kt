@@ -10,9 +10,11 @@ class MusicNotificationReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        const val ACTION_FAVORITE = "com.wavemusic.player.action.FAVORITE"
         const val ACTION_PLAY_PAUSE = "com.wavemusic.player.action.PLAY_PAUSE"
         const val ACTION_NEXT = "com.wavemusic.player.action.NEXT"
         const val ACTION_PREVIOUS = "com.wavemusic.player.action.PREVIOUS"
+        const val ACTION_CLOSE = "com.wavemusic.player.action.CLOSE"
 
         var actionHandler: ((String) -> Unit)? = null
     }

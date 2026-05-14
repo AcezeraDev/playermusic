@@ -1,5 +1,7 @@
 package com.wavemusic.player.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -11,6 +13,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.wavemusic.player.ui.theme.WaveBackground
@@ -56,9 +61,18 @@ fun BottomNavigationBar(
                 selected = selectedTab == item.tab,
                 onClick = { onTabSelected(item.tab) },
                 icon = {
+                    val iconScale by animateFloatAsState(
+                        targetValue = if (selectedTab == item.tab) 1.14f else 1f,
+                        animationSpec = spring(dampingRatio = 0.65f, stiffness = 520f),
+                        label = "bottom-nav-icon-scale"
+                    )
                     Icon(
                         imageVector = item.icon,
-                        contentDescription = item.tab.label
+                        contentDescription = item.tab.label,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        }
                     )
                 },
                 label = { Text(item.tab.label) },

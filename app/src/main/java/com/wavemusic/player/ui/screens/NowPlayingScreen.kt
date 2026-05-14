@@ -6,12 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,6 +62,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +87,7 @@ import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.Playlist
 import com.wavemusic.player.data.formatDuration
 import com.wavemusic.player.ui.components.AlbumArtwork
+import com.wavemusic.player.ui.components.AnimatedIconButton
 import com.wavemusic.player.ui.components.NeonVisualizer
 import com.wavemusic.player.ui.theme.WaveBackground
 import com.wavemusic.player.ui.theme.WaveBlue
@@ -136,16 +135,29 @@ fun NowPlayingScreen(
         animationSpec = tween(durationMillis = 320),
         label = "artwork-scale"
     )
-    val rotationTransition = rememberInfiniteTransition(label = "artwork-rotation")
-    val rotation by rotationTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "artwork-spin"
-    )
+    val artworkSway = remember(music.id) { Animatable(0f) }
+
+    LaunchedEffect(isPlaying, music.id) {
+        if (isPlaying) {
+            while (true) {
+                artworkSway.animateTo(
+                    targetValue = 6f,
+                    animationSpec = tween(durationMillis = 2200, easing = FastOutSlowInEasing)
+                )
+                artworkSway.animateTo(
+                    targetValue = -6f,
+                    animationSpec = tween(durationMillis = 2200, easing = FastOutSlowInEasing)
+                )
+            }
+        } else {
+            artworkSway.stop()
+            artworkSway.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
     val progress = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -220,7 +232,7 @@ fun NowPlayingScreen(
                         .graphicsLayer {
                             scaleX = artworkScale
                             scaleY = artworkScale
-                            rotationZ = if (isPlaying) rotation else rotation % 12f
+                            rotationZ = artworkSway.value
                         },
                     cornerRadius = 36.dp
                 )
@@ -288,15 +300,13 @@ fun NowPlayingScreen(
                     contentDescription = "Aleatório",
                     onClick = onToggleShuffle
                 )
-                IconButton(onClick = onPrevious, modifier = Modifier.size(58.dp)) {
+                AnimatedIconButton(onClick = onPrevious, modifier = Modifier.size(58.dp)) {
                     Icon(Icons.Rounded.SkipPrevious, "Música anterior", tint = WaveTextPrimary, modifier = Modifier.size(36.dp))
                 }
-                IconButton(
+                AnimatedIconButton(
                     onClick = onPlayPause,
-                    modifier = Modifier
-                        .size(78.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(WavePurple, WavePink)))
+                    modifier = Modifier.size(78.dp),
+                    background = Brush.linearGradient(listOf(WavePurple, WavePink))
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -305,7 +315,7 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(40.dp)
                     )
                 }
-                IconButton(onClick = onNext, modifier = Modifier.size(58.dp)) {
+                AnimatedIconButton(onClick = onNext, modifier = Modifier.size(58.dp)) {
                     Icon(Icons.Rounded.SkipNext, "Próxima música", tint = WaveTextPrimary, modifier = Modifier.size(36.dp))
                 }
                 ToggleIcon(
@@ -454,18 +464,14 @@ private fun RoundAction(
     onClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(
+        AnimatedIconButton(
             onClick = onClick,
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(
-                    if (selected) {
-                        Brush.linearGradient(listOf(WavePink, WavePurple))
-                    } else {
-                        Brush.linearGradient(listOf(WaveSurfaceBright, WaveSurface.copy(alpha = 0.9f)))
-                    }
-                )
+            modifier = Modifier.size(46.dp),
+            background = if (selected) {
+                Brush.linearGradient(listOf(WavePink, WavePurple))
+            } else {
+                Brush.linearGradient(listOf(WaveSurfaceBright, WaveSurface.copy(alpha = 0.9f)))
+            }
         ) {
             Icon(icon, label, tint = if (selected) WaveTextPrimary else WaveTextSecondary)
         }
@@ -480,18 +486,14 @@ private fun ToggleIcon(
     contentDescription: String,
     onClick: () -> Unit
 ) {
-    IconButton(
+    AnimatedIconButton(
         onClick = onClick,
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) {
-                    Brush.linearGradient(listOf(WaveBlue, WavePurple))
-                } else {
-                    Brush.linearGradient(listOf(WaveSurfaceBright.copy(alpha = 0.88f), WaveSurfaceBright.copy(alpha = 0.6f)))
-                }
-            )
+        modifier = Modifier.size(48.dp),
+        background = if (selected) {
+            Brush.linearGradient(listOf(WaveBlue, WavePurple))
+        } else {
+            Brush.linearGradient(listOf(WaveSurfaceBright.copy(alpha = 0.88f), WaveSurfaceBright.copy(alpha = 0.6f)))
+        }
     ) {
         Icon(icon, contentDescription, tint = if (selected) WaveTextPrimary else WaveTextSecondary)
     }

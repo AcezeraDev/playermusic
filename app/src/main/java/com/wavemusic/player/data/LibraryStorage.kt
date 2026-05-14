@@ -1,7 +1,6 @@
 package com.wavemusic.player.data
 
 import android.content.Context
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -24,31 +23,53 @@ class LibraryStorage(context: Context) {
         val raw = prefs.getString(KEY_PLAYLISTS, "").orEmpty()
         if (raw.isBlank()) return emptyList()
 
+        return if (raw.trimStart().startsWith("[")) {
+            parsePlaylistsJson(raw)
+        } else {
+            parseLegacyPlaylists(raw).also { playlists ->
+                if (playlists.isNotEmpty()) savePlaylists(playlists)
+            }
+        }
+    }
+
+    private fun parseLegacyPlaylists(raw: String): List<Playlist> {
         return raw.lineSequence()
             .mapNotNull { line ->
                 val parts = line.split("|")
                 if (parts.size != 3) return@mapNotNull null
 
                 val id = parts[0].toLongOrNull() ?: return@mapNotNull null
-                val name = Uri.decode(parts[1]).orEmpty().ifBlank { "Playlist" }
+                val name = android.net.Uri.decode(parts[1]).orEmpty().ifBlank { "Playlist" }
                 val songIds = parts[2]
                     .split(",")
                     .mapNotNull { it.toLongOrNull() }
 
-                Playlist(id = id, name = name, songIds = songIds)
+                Playlist(id = id, name = name, songIds = songIds, createdAt = id)
             }
             .toList()
     }
 
+    private fun parsePlaylistsJson(raw: String): List<Playlist> {
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    add(item.toPlaylist(System.currentTimeMillis() + index))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     fun savePlaylists(playlists: List<Playlist>) {
-        val raw = playlists.joinToString(separator = "\n") { playlist ->
-            val encodedName = Uri.encode(playlist.name)
-            val ids = playlist.songIds.joinToString(separator = ",")
-            "${playlist.id}|$encodedName|$ids"
+        val raw = JSONArray().apply {
+            playlists.forEach { playlist ->
+                put(playlist.toJson())
+            }
         }
 
         prefs.edit()
-            .putString(KEY_PLAYLISTS, raw)
+            .putString(KEY_PLAYLISTS, raw.toString())
             .apply()
     }
 
@@ -112,10 +133,7 @@ class LibraryStorage(context: Context) {
         val playlistsJson = JSONArray()
         playlists.forEach { playlist ->
             playlistsJson.put(
-                JSONObject()
-                    .put("id", playlist.id)
-                    .put("name", playlist.name)
-                    .put("songIds", JSONArray(playlist.songIds))
+                playlist.toJson()
             )
         }
         root.put("playlists", playlistsJson)
@@ -140,11 +158,7 @@ class LibraryStorage(context: Context) {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
                     add(
-                        Playlist(
-                            id = item.optLong("id", System.currentTimeMillis() + index),
-                            name = item.optString("name", "Playlist"),
-                            songIds = item.optJSONArray("songIds").toLongList()
-                        )
+                        item.toPlaylist(System.currentTimeMillis() + index)
                     )
                 }
             }
@@ -190,6 +204,28 @@ class LibraryStorage(context: Context) {
 
     private fun JSONArray?.toLongSet(): Set<Long> {
         return toLongList().toSet()
+    }
+
+    private fun Playlist.toJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("name", name)
+            .put("description", description)
+            .put("imageUri", imageUri ?: "")
+            .put("createdAt", createdAt)
+            .put("songIds", JSONArray(songIds))
+    }
+
+    private fun JSONObject.toPlaylist(fallbackId: Long): Playlist {
+        val id = optLong("id", fallbackId)
+        return Playlist(
+            id = id,
+            name = optString("name", "Playlist").ifBlank { "Playlist" },
+            songIds = optJSONArray("songIds").toLongList(),
+            description = optString("description", ""),
+            imageUri = optString("imageUri", "").ifBlank { null },
+            createdAt = optLong("createdAt", id)
+        )
     }
 
     private companion object {

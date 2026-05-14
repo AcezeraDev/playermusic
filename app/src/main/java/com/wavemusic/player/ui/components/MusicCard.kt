@@ -6,9 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,17 +79,16 @@ fun MusicCard(
     var menuExpanded by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
 
-    Surface(
+    AnimatedCard(
         modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .clickable { onClick(music) },
-        color = if (isCurrent) WaveSurface.copy(alpha = 0.98f) else WaveSurface.copy(alpha = 0.72f),
+            .fillMaxWidth(),
+        onClick = { onClick(music) },
         shape = RoundedCornerShape(22.dp),
-        tonalElevation = 0.dp
+        color = if (isCurrent) WaveSurface.copy(alpha = 0.98f) else WaveSurface.copy(alpha = 0.72f),
+        contentPadding = PaddingValues(12.dp),
+        pressedScale = 0.985f
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AlbumArtwork(

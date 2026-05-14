@@ -44,6 +44,7 @@ import com.wavemusic.player.data.Music
 import com.wavemusic.player.data.MusicStore
 import com.wavemusic.player.data.PlaybackStats
 import com.wavemusic.player.data.Playlist
+import com.wavemusic.player.data.PlaylistImageStore
 import com.wavemusic.player.data.SleepTimerOption
 import com.wavemusic.player.data.UserPreferences
 import com.wavemusic.player.notifications.MusicNotificationReceiver
@@ -81,6 +82,7 @@ private fun WaveMusicApp() {
     val context = LocalContext.current
     val userPreferences = remember { UserPreferences(context.applicationContext) }
     val libraryStorage = remember { LibraryStorage(context.applicationContext) }
+    val playlistImageStore = remember { PlaylistImageStore(context.applicationContext) }
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -145,6 +147,7 @@ private fun WaveMusicApp() {
     var shuffleEnabled by rememberSaveable { mutableStateOf(false) }
     var sleepTimerEndAtMs by remember { mutableLongStateOf(0L) }
     var sleepTimerLabel by rememberSaveable { mutableStateOf<String?>(null) }
+    var mediaNotificationDismissed by rememberSaveable { mutableStateOf(false) }
 
     val mediaPlayer = remember { MediaPlayer() }
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
@@ -204,10 +207,12 @@ private fun WaveMusicApp() {
             rebuildEqualizer()
             if (crossfadeEnabled) mediaPlayer.setVolume(0f, 0f)
             mediaPlayer.start()
+            mediaSession.isActive = true
             currentMusic = music
             durationMs = mediaPlayer.duration.toLong().takeIf { it > 0 } ?: music.durationMs
             positionMs = 0L
             isPlaying = true
+            mediaNotificationDismissed = false
             recordPlay(music)
 
             if (crossfadeEnabled) {
@@ -263,6 +268,8 @@ private fun WaveMusicApp() {
             mediaPlayer.pause()
             isPlaying = false
         } else {
+            mediaSession.isActive = true
+            mediaNotificationDismissed = false
             mediaPlayer.start()
             isPlaying = true
         }
@@ -304,23 +311,50 @@ private fun WaveMusicApp() {
         libraryStorage.saveLikedIds(likedIds)
     }
 
-    fun createPlaylist(name: String, songIds: List<Long>) {
+    fun createPlaylist(name: String, description: String, imageUri: String?, songIds: List<Long>) {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return
-        playlists = playlists + Playlist(System.currentTimeMillis(), cleanName, songIds.distinct())
+        val createdAt = System.currentTimeMillis()
+        playlists = playlists + Playlist(
+            id = createdAt,
+            name = cleanName,
+            songIds = songIds.distinct(),
+            description = description.trim(),
+            imageUri = imageUri,
+            createdAt = createdAt
+        )
         libraryStorage.savePlaylists(playlists)
     }
 
     fun deletePlaylist(playlist: Playlist) {
+        playlistImageStore.deletePlaylistCover(playlist.imageUri)
         playlists = playlists.filterNot { it.id == playlist.id }
         libraryStorage.savePlaylists(playlists)
     }
 
-    fun updatePlaylist(playlist: Playlist, name: String, songIds: List<Long>) {
+    fun updatePlaylist(
+        playlist: Playlist,
+        name: String,
+        description: String,
+        imageUri: String?,
+        songIds: List<Long>
+    ) {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return
+        if (playlist.imageUri != null && playlist.imageUri != imageUri) {
+            playlistImageStore.deletePlaylistCover(playlist.imageUri)
+        }
         playlists = playlists.map {
-            if (it.id == playlist.id) it.copy(name = cleanName, songIds = songIds.distinct()) else it
+            if (it.id == playlist.id) {
+                it.copy(
+                    name = cleanName,
+                    songIds = songIds.distinct(),
+                    description = description.trim(),
+                    imageUri = imageUri
+                )
+            } else {
+                it
+            }
         }
         libraryStorage.savePlaylists(playlists)
     }
@@ -408,7 +442,21 @@ private fun WaveMusicApp() {
         }
         notificationsEnabled = enabled
         userPreferences.saveMediaNotificationsEnabled(enabled)
-        if (!enabled) notificationController.cancel()
+        if (enabled) {
+            mediaNotificationDismissed = false
+        } else {
+            notificationController.cancel()
+        }
+    }
+
+    fun closeMediaNotification() {
+        runCatching {
+            if (mediaPlayer.isPlaying) mediaPlayer.pause()
+        }
+        isPlaying = false
+        mediaNotificationDismissed = true
+        mediaSession.isActive = false
+        notificationController.cancel()
     }
 
     fun exportBackup(): String {
@@ -473,10 +521,27 @@ private fun WaveMusicApp() {
         }
     }
 
-    LaunchedEffect(notificationsEnabled, hasNotificationPermission, currentMusic?.id, currentMusic?.title, isPlaying) {
+    LaunchedEffect(
+        notificationsEnabled,
+        hasNotificationPermission,
+        currentMusic?.id,
+        currentMusic?.title,
+        isPlaying,
+        positionMs,
+        durationMs,
+        likedIds,
+        mediaNotificationDismissed
+    ) {
         val music = currentMusic
-        if (notificationsEnabled && hasNotificationPermission && music != null) {
-            notificationController.show(music, isPlaying)
+        if (notificationsEnabled && hasNotificationPermission && music != null && !mediaNotificationDismissed) {
+            notificationController.show(
+                music = music,
+                isPlaying = isPlaying,
+                isLiked = music.id in likedIds,
+                positionMs = positionMs,
+                durationMs = durationMs.takeIf { it > 0L } ?: music.durationMs,
+                sessionToken = mediaSession.sessionToken
+            )
         } else {
             notificationController.cancel()
         }
@@ -492,15 +557,30 @@ private fun WaveMusicApp() {
         )
     }
 
-    LaunchedEffect(currentMusic?.id, isPlaying, positionMs, durationMs) {
+    LaunchedEffect(currentMusic?.id, durationMs) {
         val music = currentMusic
-        mediaSession.setMetadata(
-            MediaMetadata.Builder()
-                .putString(MediaMetadata.METADATA_KEY_TITLE, music?.title ?: "Wave Music")
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, music?.artist ?: "")
-                .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs)
-                .build()
-        )
+        val artwork = withContext(Dispatchers.IO) {
+            music?.let { notificationController.artworkForSession(it) }
+        }
+        val metadata = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, music?.title ?: "Wave Music")
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, music?.artist ?: "")
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs.takeIf { it > 0L } ?: music?.durationMs ?: 0L)
+
+        artwork?.let {
+            metadata.putBitmap(MediaMetadata.METADATA_KEY_ART, it)
+            metadata.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, it)
+        }
+
+        mediaSession.setMetadata(metadata.build())
+    }
+
+    LaunchedEffect(currentMusic?.id, isPlaying, positionMs, durationMs, mediaNotificationDismissed) {
+        val playbackState = when {
+            currentMusic == null || mediaNotificationDismissed -> PlaybackState.STATE_STOPPED
+            isPlaying -> PlaybackState.STATE_PLAYING
+            else -> PlaybackState.STATE_PAUSED
+        }
         mediaSession.setPlaybackState(
             PlaybackState.Builder()
                 .setActions(
@@ -509,10 +589,11 @@ private fun WaveMusicApp() {
                         PlaybackState.ACTION_PLAY_PAUSE or
                         PlaybackState.ACTION_SKIP_TO_NEXT or
                         PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                        PlaybackState.ACTION_SEEK_TO
+                        PlaybackState.ACTION_SEEK_TO or
+                        PlaybackState.ACTION_STOP
                 )
                 .setState(
-                    if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+                    playbackState,
                     positionMs,
                     if (isPlaying) 1f else 0f
                 )
@@ -520,20 +601,23 @@ private fun WaveMusicApp() {
         )
     }
 
-    DisposableEffect(songs, currentMusic?.id, isPlaying) {
+    DisposableEffect(songs, currentMusic?.id, isPlaying, mediaNotificationDismissed) {
         MusicNotificationReceiver.actionHandler = { action ->
             when (action) {
+                MusicNotificationReceiver.ACTION_FAVORITE -> currentMusic?.let(::toggleLike)
                 MusicNotificationReceiver.ACTION_PLAY_PAUSE -> togglePlayPause()
                 MusicNotificationReceiver.ACTION_NEXT -> playNext()
                 MusicNotificationReceiver.ACTION_PREVIOUS -> playPrevious()
+                MusicNotificationReceiver.ACTION_CLOSE -> closeMediaNotification()
             }
         }
-        mediaSession.isActive = true
+        mediaSession.isActive = !mediaNotificationDismissed
         mediaSession.setCallback(object : MediaSession.Callback() {
             override fun onPlay() = togglePlayPause()
             override fun onPause() = togglePlayPause()
             override fun onSkipToNext() = playNext()
             override fun onSkipToPrevious() = playPrevious()
+            override fun onStop() = closeMediaNotification()
             override fun onSeekTo(pos: Long) {
                 if (durationMs > 0L) seekTo(pos.toFloat() / durationMs.toFloat())
             }
