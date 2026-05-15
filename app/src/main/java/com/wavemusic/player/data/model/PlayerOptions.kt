@@ -12,7 +12,8 @@ enum class EqualizerPreset(
     Pop("pop", "Pop", listOf(180, 420, 620, 360, 180)),
     Rock("rock", "Rock", listOf(650, 320, -120, 360, 720)),
     Electronic("electronic", "Eletrônica", listOf(760, 420, 120, 520, 840)),
-    Vocal("vocal", "Vocal", listOf(-220, 80, 660, 520, 120));
+    Vocal("vocal", "Vocal", listOf(-220, 80, 660, 520, 120)),
+    Custom("custom", "Personalizado", listOf(0, 0, 0, 0, 0));
 
     companion object {
         fun fromKey(key: String?): EqualizerPreset {
@@ -66,6 +67,8 @@ data class LibraryBackup(
     val queueIds: List<Long>,
     val playCounts: Map<Long, Int>,
     val totalListenMs: Long,
-    val resumePositions: Map<Long, Long> = emptyMap()
+    val resumePositions: Map<Long, Long> = emptyMap(),
+    val lyrics: Map<Long, String> = emptyMap(),
+    val tagOverrides: Map<Long, LocalTagOverride> = emptyMap()
 )
 

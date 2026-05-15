@@ -69,6 +69,30 @@ class UserPreferences(context: Context) {
             .apply()
     }
 
+    fun loadCustomEqualizerGains(): List<Short> {
+        val defaults = EqualizerPreset.Custom.bandGains
+        val saved = prefs.getString(KEY_CUSTOM_EQUALIZER, "").orEmpty()
+            .split(",")
+            .mapNotNull { it.toShortOrNull() }
+        return if (saved.size == defaults.size) saved else defaults
+    }
+
+    fun saveCustomEqualizerGains(gains: List<Short>) {
+        prefs.edit()
+            .putString(KEY_CUSTOM_EQUALIZER, gains.joinToString(","))
+            .apply()
+    }
+
+    fun loadLocalVideosEnabled(): Boolean {
+        return prefs.getBoolean(KEY_LOCAL_VIDEOS, false)
+    }
+
+    fun saveLocalVideosEnabled(enabled: Boolean) {
+        prefs.edit()
+            .putBoolean(KEY_LOCAL_VIDEOS, enabled)
+            .apply()
+    }
+
     fun loadMediaNotificationsEnabled(): Boolean {
         return prefs.getBoolean(KEY_MEDIA_NOTIFICATIONS, true)
     }
@@ -83,10 +107,12 @@ class UserPreferences(context: Context) {
         const val KEY_AUDIO_QUALITY = "audio_quality"
         const val KEY_MEDIA_NOTIFICATIONS = "media_notifications"
         const val KEY_EQUALIZER = "equalizer"
+        const val KEY_CUSTOM_EQUALIZER = "custom_equalizer"
         const val KEY_ACCENT_THEME = "accent_theme"
         const val KEY_CROSSFADE = "crossfade"
         const val KEY_CONTINUE_LISTENING = "continue_listening"
         const val KEY_RESUME_PLAYBACK_POSITION = "resume_playback_position"
+        const val KEY_LOCAL_VIDEOS = "local_videos"
     }
 }
 

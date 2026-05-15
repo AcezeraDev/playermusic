@@ -49,12 +49,20 @@ class WaveMusicWidgetProvider : AppWidgetProvider() {
                 setTextViewText(R.id.widget_artist, artist)
                 setTextViewText(R.id.widget_play_pause, if (isPlaying) "Pausar" else "Tocar")
                 setOnClickPendingIntent(
+                    R.id.widget_previous,
+                    actionIntent(context, MusicNotificationReceiver.ACTION_PREVIOUS, 50)
+                )
+                setOnClickPendingIntent(
                     R.id.widget_play_pause,
                     actionIntent(context, MusicNotificationReceiver.ACTION_PLAY_PAUSE, 51)
                 )
                 setOnClickPendingIntent(
                     R.id.widget_next,
                     actionIntent(context, MusicNotificationReceiver.ACTION_NEXT, 52)
+                )
+                setOnClickPendingIntent(
+                    R.id.widget_favorite,
+                    actionIntent(context, MusicNotificationReceiver.ACTION_FAVORITE, 53)
                 )
             }
         }

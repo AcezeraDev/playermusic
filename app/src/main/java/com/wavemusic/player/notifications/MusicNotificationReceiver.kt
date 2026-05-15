@@ -13,6 +13,8 @@ class MusicNotificationReceiver : BroadcastReceiver() {
             handler(action)
         } else if (action == ACTION_CLOSE) {
             WaveMusicPlaybackService.stop(context)
+        } else if (action in playbackActions) {
+            WaveMusicPlaybackService.handleNotificationAction(context, action)
         }
     }
 
@@ -22,6 +24,13 @@ class MusicNotificationReceiver : BroadcastReceiver() {
         const val ACTION_NEXT = "com.wavemusic.player.action.NEXT"
         const val ACTION_PREVIOUS = "com.wavemusic.player.action.PREVIOUS"
         const val ACTION_CLOSE = "com.wavemusic.player.action.CLOSE"
+
+        private val playbackActions = setOf(
+            ACTION_PLAY_PAUSE,
+            ACTION_NEXT,
+            ACTION_PREVIOUS,
+            ACTION_FAVORITE
+        )
 
         var actionHandler: ((String) -> Unit)? = null
     }

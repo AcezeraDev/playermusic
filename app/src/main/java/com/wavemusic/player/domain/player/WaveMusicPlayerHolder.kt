@@ -1,16 +1,18 @@
 package com.wavemusic.player.domain.player
 
 import android.content.Context
-import android.media.MediaPlayer
 import android.media.session.MediaSession
+import androidx.media3.exoplayer.ExoPlayer
 
 object WaveMusicPlayerHolder {
-    private var mediaPlayer: MediaPlayer? = null
+    private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
 
     @Synchronized
-    fun mediaPlayer(): MediaPlayer {
-        return mediaPlayer ?: MediaPlayer().also { mediaPlayer = it }
+    fun player(context: Context): ExoPlayer {
+        return player ?: ExoPlayer.Builder(context.applicationContext)
+            .build()
+            .also { player = it }
     }
 
     @Synchronized
@@ -22,10 +24,10 @@ object WaveMusicPlayerHolder {
     }
 
     @Synchronized
-    fun releaseMediaPlayer(player: MediaPlayer) {
-        if (mediaPlayer === player) {
-            runCatching { player.release() }
-            mediaPlayer = null
+    fun releasePlayer(exoPlayer: ExoPlayer) {
+        if (player === exoPlayer) {
+            runCatching { exoPlayer.release() }
+            player = null
         }
     }
 

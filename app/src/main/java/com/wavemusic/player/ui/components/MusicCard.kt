@@ -77,6 +77,7 @@ fun MusicCard(
     onAddToPlaylist: (Music, Playlist) -> Unit,
     isQueued: Boolean = false,
     onAddToQueue: (Music) -> Unit = {},
+    onPlayNext: (Music) -> Unit = {},
     onRemoveFromQueue: (Music) -> Unit = {},
     onRemoveFromPlaylist: ((Music) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -221,6 +222,20 @@ fun MusicCard(
                         onClick = {
                             menuExpanded = false
                             shareMusic(context, music)
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Tocar a seguir") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onPlayNext(music)
                         }
                     )
 

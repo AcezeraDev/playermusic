@@ -128,7 +128,9 @@ fun LibraryScreen(
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onRemoveFromPlaylist: (Music, Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit,
+    onCreatePlaylistFromFolder: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by rememberSaveable { mutableStateOf("root") }
@@ -183,6 +185,13 @@ fun LibraryScreen(
                 target = "history"
             ),
             LibrarySection(
+                title = "Playlists inteligentes",
+                subtitle = "Listas automaticas por habito",
+                icon = Icons.Rounded.GraphicEq,
+                colors = listOf(WaveBlue, WavePink),
+                target = "smart"
+            ),
+            LibrarySection(
                 title = "Estatisticas",
                 subtitle = "Mais tocadas e tempo ouvindo",
                 icon = Icons.Rounded.QueryStats,
@@ -198,6 +207,7 @@ fun LibraryScreen(
             "artistSongs" -> "artists"
             "playlistSongs" -> "playlists"
             "folderSongs" -> "folders"
+            "smartSongs" -> "smart"
             else -> "root"
         }
         if (page != "playlistSongs") selectedPlaylistId = null
@@ -289,6 +299,7 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -392,6 +403,7 @@ fun LibraryScreen(
                                         onAddToPlaylist = onAddToPlaylist,
                                         isQueued = music.id in queuedIds,
                                         onAddToQueue = onAddToQueue,
+                                        onPlayNext = onPlayNext,
                                         onRemoveFromQueue = onRemoveFromQueue,
                                         onRemoveFromPlaylist = {
                                             onRemoveFromPlaylist(music, playlist)
@@ -439,6 +451,7 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -478,6 +491,7 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -504,6 +518,20 @@ fun LibraryScreen(
 
                 "folderSongs" -> {
                     val folderSongs = songs.filter { it.folder.ifBlank { "Musicas" } == selectedName }
+                    if (folderSongs.isNotEmpty()) {
+                        item {
+                            Button(
+                                onClick = { onCreatePlaylistFromFolder(selectedName) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = WaveBlue),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = WaveTextPrimary)
+                                Spacer(Modifier.size(8.dp))
+                                Text("Criar playlist desta pasta")
+                            }
+                        }
+                    }
                     songItems(
                         songs = folderSongs,
                         emptyTitle = "Pasta vazia",
@@ -517,6 +545,7 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -536,6 +565,49 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
+                        onRemoveFromQueue = onRemoveFromQueue
+                    )
+                }
+
+                "smart" -> {
+                    val smartRows = listOf(
+                        "mostPlayed" to Triple("Mais tocadas", "Ordenadas pelo seu historico", Icons.Rounded.GraphicEq),
+                        "recentlyAdded" to Triple("Adicionadas recentemente", "Novidades do dispositivo", Icons.Rounded.Save),
+                        "neverPlayed" to Triple("Nunca tocadas", "Faixas ainda sem reproducao", Icons.Rounded.MusicNote),
+                        "longTracks" to Triple("Faixas longas", "Musicas e sets acima de 7 minutos", Icons.Rounded.QueryStats)
+                    )
+                    items(smartRows, key = { it.first }) { (key, info) ->
+                        val smartSongs = smartSongsFor(key, songs, playbackStats)
+                        CollectionRow(
+                            title = info.first,
+                            subtitle = "${smartSongs.size} itens",
+                            icon = info.third,
+                            colors = listOf(WaveBlue, WavePink),
+                            onClick = {
+                                selectedName = key
+                                page = "smartSongs"
+                            }
+                        )
+                    }
+                }
+
+                "smartSongs" -> {
+                    val smartSongs = smartSongsFor(selectedName, songs, playbackStats)
+                    songItems(
+                        songs = smartSongs,
+                        emptyTitle = "Lista vazia",
+                        emptyMessage = "Esta playlist inteligente ainda nao tem faixas suficientes.",
+                        currentMusicId = currentMusicId,
+                        likedIds = likedIds,
+                        playlists = playlists,
+                        onSongClick = onSongClick,
+                        onPlaySongList = onPlaySongList,
+                        onToggleLike = onToggleLike,
+                        onAddToPlaylist = onAddToPlaylist,
+                        queuedIds = queuedIds,
+                        onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -558,6 +630,7 @@ fun LibraryScreen(
                         onAddToPlaylist = onAddToPlaylist,
                         queuedIds = queuedIds,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -612,6 +685,7 @@ private fun LazyListScope.songItems(
     onAddToPlaylist: (Music, Playlist) -> Unit,
     queuedIds: Set<Long>,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit
 ) {
     if (songs.isEmpty()) {
@@ -629,6 +703,7 @@ private fun LazyListScope.songItems(
                     onAddToPlaylist = onAddToPlaylist,
                     isQueued = music.id in queuedIds,
                     onAddToQueue = onAddToQueue,
+                    onPlayNext = onPlayNext,
                     onRemoveFromQueue = onRemoveFromQueue
                 )
             }
@@ -1838,6 +1913,8 @@ private fun titleForPage(page: String, selectedName: String): String {
         "liked" -> "Musicas curtidas"
         "playlists" -> "Playlists"
         "playlistSongs" -> selectedName
+        "smart" -> "Playlists inteligentes"
+        "smartSongs" -> smartTitle(selectedName)
         "albums" -> "Albuns"
         "albumSongs" -> selectedName
         "artists" -> "Artistas"
@@ -1860,12 +1937,42 @@ private fun subtitleForPage(
         "liked" -> "${likedIds.size} musicas curtidas"
         "playlists" -> "${playlists.size} playlists criadas"
         "playlistSongs" -> "Capa, descricao e faixas da playlist"
+        "smart" -> "Listas automaticas atualizadas pelo uso"
+        "smartSongs" -> "Playlist inteligente"
         "albums", "albumSongs" -> "${songs.map { it.album }.distinct().size} albuns no dispositivo"
         "artists", "artistSongs" -> "${songs.map { it.artist }.distinct().size} artistas encontrados"
         "folders", "folderSongs" -> "${songs.map { it.folder }.distinct().size} pastas com audio"
         "history" -> "Musicas que voce tocou recentemente"
         "stats" -> "Seus habitos salvos localmente"
         else -> "${songs.size} musicas carregadas do dispositivo"
+    }
+}
+
+private fun smartSongsFor(
+    key: String,
+    songs: List<Music>,
+    playbackStats: PlaybackStats
+): List<Music> {
+    return when (key) {
+        "mostPlayed" -> playbackStats.playCounts.entries
+            .sortedByDescending { it.value }
+            .mapNotNull { entry -> songs.firstOrNull { it.id == entry.key } }
+        "recentlyAdded" -> songs.sortedByDescending { it.dateAddedSeconds }.take(50)
+        "neverPlayed" -> songs.filter { it.id !in playbackStats.playCounts.keys }
+            .sortedByDescending { it.dateAddedSeconds }
+        "longTracks" -> songs.filter { it.durationMs >= 7 * 60_000L }
+            .sortedByDescending { it.durationMs }
+        else -> emptyList()
+    }
+}
+
+private fun smartTitle(key: String): String {
+    return when (key) {
+        "mostPlayed" -> "Mais tocadas"
+        "recentlyAdded" -> "Adicionadas recentemente"
+        "neverPlayed" -> "Nunca tocadas"
+        "longTracks" -> "Faixas longas"
+        else -> "Playlist inteligente"
     }
 }
 

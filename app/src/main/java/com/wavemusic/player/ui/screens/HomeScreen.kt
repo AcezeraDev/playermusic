@@ -91,6 +91,7 @@ fun HomeScreen(
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onPlaylistClick: (Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit,
     queuedIds: Set<Long>,
     modifier: Modifier = Modifier
@@ -212,6 +213,7 @@ fun HomeScreen(
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -235,6 +237,7 @@ fun HomeScreen(
                         onToggleLike = onToggleLike,
                         onAddToPlaylist = onAddToPlaylist,
                         onAddToQueue = onAddToQueue,
+                        onPlayNext = onPlayNext,
                         onRemoveFromQueue = onRemoveFromQueue
                     )
                 }
@@ -277,6 +280,7 @@ fun HomeScreen(
                     onToggleLike = onToggleLike,
                     onAddToPlaylist = onAddToPlaylist,
                     onAddToQueue = onAddToQueue,
+                    onPlayNext = onPlayNext,
                     onRemoveFromQueue = onRemoveFromQueue
                 )
             }
@@ -308,6 +312,7 @@ private fun MediaCard(
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit
 ) {
     MusicListItem(
@@ -320,6 +325,7 @@ private fun MediaCard(
         onAddToPlaylist = onAddToPlaylist,
         isQueued = music.id in queuedIds,
         onAddToQueue = onAddToQueue,
+        onPlayNext = onPlayNext,
         onRemoveFromQueue = onRemoveFromQueue
     )
 }

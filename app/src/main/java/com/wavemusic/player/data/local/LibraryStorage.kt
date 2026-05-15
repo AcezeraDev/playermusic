@@ -2,6 +2,7 @@ package com.wavemusic.player.data.local
 
 import android.content.Context
 import com.wavemusic.player.data.model.LibraryBackup
+import com.wavemusic.player.data.model.LocalTagOverride
 import com.wavemusic.player.data.model.PlaybackStats
 import com.wavemusic.player.data.model.Playlist
 import org.json.JSONArray
@@ -130,6 +131,54 @@ class LibraryStorage(context: Context) {
         saveResumePositions(positions.filterValues { it >= RESUME_MIN_POSITION_MS })
     }
 
+    fun loadLyrics(id: Long): String {
+        return prefs.getString(KEY_LYRICS_PREFIX + id, "").orEmpty()
+    }
+
+    fun saveLyrics(id: Long, lyrics: String) {
+        val editor = prefs.edit()
+        if (lyrics.isBlank()) {
+            editor.remove(KEY_LYRICS_PREFIX + id)
+        } else {
+            editor.putString(KEY_LYRICS_PREFIX + id, lyrics.trim())
+        }
+        editor.apply()
+    }
+
+    fun loadTagOverrides(): Map<Long, LocalTagOverride> {
+        val raw = prefs.getString(KEY_TAG_OVERRIDES, "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val json = JSONObject(raw)
+            buildMap {
+                json.keys().forEach { key ->
+                    val id = key.toLongOrNull() ?: return@forEach
+                    val item = json.optJSONObject(key) ?: return@forEach
+                    put(
+                        id,
+                        LocalTagOverride(
+                            title = item.optString("title", ""),
+                            artist = item.optString("artist", ""),
+                            album = item.optString("album", "")
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun saveTagOverride(id: Long, override: LocalTagOverride) {
+        val overrides = loadTagOverrides().toMutableMap()
+        overrides[id] = override
+        saveTagOverrides(overrides)
+    }
+
+    fun clearTagOverride(id: Long) {
+        val overrides = loadTagOverrides().toMutableMap()
+        overrides.remove(id)
+        saveTagOverrides(overrides)
+    }
+
     fun loadPlaybackStats(): PlaybackStats {
         val playCounts = prefs.getString(KEY_PLAY_COUNTS, "").orEmpty()
             .lineSequence()
@@ -206,6 +255,28 @@ class LibraryStorage(context: Context) {
         }
         root.put("resumePositions", resumeJson)
 
+        val lyricsJson = JSONObject()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith(KEY_LYRICS_PREFIX) && value is String && value.isNotBlank()) {
+                key.removePrefix(KEY_LYRICS_PREFIX).toLongOrNull()?.let { id ->
+                    lyricsJson.put(id.toString(), value)
+                }
+            }
+        }
+        root.put("lyrics", lyricsJson)
+
+        val tagOverridesJson = JSONObject()
+        loadTagOverrides().forEach { (id, override) ->
+            tagOverridesJson.put(
+                id.toString(),
+                JSONObject()
+                    .put("title", override.title)
+                    .put("artist", override.artist)
+                    .put("album", override.album)
+            )
+        }
+        root.put("tagOverrides", tagOverridesJson)
+
         return root.toString(2)
     }
 
@@ -242,15 +313,55 @@ class LibraryStorage(context: Context) {
                 }
             }
 
+            val lyrics = mutableMapOf<Long, String>()
+            val lyricsJson = root.optJSONObject("lyrics") ?: JSONObject()
+            lyricsJson.keys().forEach { key ->
+                key.toLongOrNull()?.let { id ->
+                    val text = lyricsJson.optString(key, "")
+                    if (text.isNotBlank()) lyrics[id] = text
+                }
+            }
+
+            val tagOverrides = mutableMapOf<Long, LocalTagOverride>()
+            val tagOverridesJson = root.optJSONObject("tagOverrides") ?: JSONObject()
+            tagOverridesJson.keys().forEach { key ->
+                key.toLongOrNull()?.let { id ->
+                    val item = tagOverridesJson.optJSONObject(key) ?: return@let
+                    tagOverrides[id] = LocalTagOverride(
+                        title = item.optString("title", ""),
+                        artist = item.optString("artist", ""),
+                        album = item.optString("album", "")
+                    )
+                }
+            }
+
             LibraryBackup(
                 likedIds = likedIds,
                 playlists = playlists,
                 queueIds = queueIds,
                 playCounts = counts,
                 totalListenMs = root.optLong("totalListenMs", 0L),
-                resumePositions = resumePositions
+                resumePositions = resumePositions,
+                lyrics = lyrics,
+                tagOverrides = tagOverrides
             )
         }.getOrNull()
+    }
+
+    private fun saveTagOverrides(overrides: Map<Long, LocalTagOverride>) {
+        val json = JSONObject()
+        overrides.forEach { (id, override) ->
+            json.put(
+                id.toString(),
+                JSONObject()
+                    .put("title", override.title)
+                    .put("artist", override.artist)
+                    .put("album", override.album)
+            )
+        }
+        prefs.edit()
+            .putString(KEY_TAG_OVERRIDES, json.toString())
+            .apply()
     }
 
     private fun loadLongList(key: String): List<Long> {
@@ -308,6 +419,8 @@ class LibraryStorage(context: Context) {
         const val KEY_RESUME_POSITIONS = "resume_positions"
         const val KEY_PLAY_COUNTS = "play_counts"
         const val KEY_TOTAL_LISTEN_MS = "total_listen_ms"
+        const val KEY_LYRICS_PREFIX = "lyrics_"
+        const val KEY_TAG_OVERRIDES = "tag_overrides"
         const val MAX_RECENTS = 30
         const val MAX_RESUME_POSITIONS = 200
         const val RESUME_MIN_POSITION_MS = 5_000L

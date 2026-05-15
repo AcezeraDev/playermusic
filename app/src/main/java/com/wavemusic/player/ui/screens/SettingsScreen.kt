@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +43,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -82,20 +85,23 @@ import com.wavemusic.player.ui.theme.WaveTextSecondary
 fun SettingsScreen(
     audioQuality: AudioQuality,
     equalizerPreset: EqualizerPreset,
+    customEqualizerGains: List<Short>,
     accentTheme: AccentTheme,
     notificationsEnabled: Boolean,
     crossfadeEnabled: Boolean,
     continueListeningEnabled: Boolean,
     resumePlaybackPositionEnabled: Boolean,
+    localVideosEnabled: Boolean,
     sleepTimerLabel: String?,
     appVersion: String,
     onAudioQualitySelected: (AudioQuality) -> Unit,
-    onEqualizerSelected: (EqualizerPreset) -> Unit,
+    onEqualizerSelected: (EqualizerPreset, List<Short>) -> Unit,
     onAccentThemeSelected: (AccentTheme) -> Unit,
     onNotificationsChanged: (Boolean) -> Unit,
     onCrossfadeChanged: (Boolean) -> Unit,
     onContinueListeningChanged: (Boolean) -> Unit,
     onResumePlaybackPositionChanged: (Boolean) -> Unit,
+    onLocalVideosChanged: (Boolean) -> Unit,
     onSleepTimerSelected: (SleepTimerOption?) -> Unit,
     onExportBackup: () -> String,
     onImportBackup: (String) -> Boolean,
@@ -182,13 +188,23 @@ fun SettingsScreen(
         item {
             SettingRow(
                 "Retomar minutagem",
-                if (resumePlaybackPositionEnabled) "Volta no mesmo ponto da mÃºsica" else "Sempre comeÃ§a do inÃ­cio",
+                if (resumePlaybackPositionEnabled) "Volta no mesmo ponto da música" else "Sempre começa do início",
                 Icons.Rounded.RestartAlt,
                 onClick = { onResumePlaybackPositionChanged(!resumePlaybackPositionEnabled) }
             ) {
                 Switch(resumePlaybackPositionEnabled, onResumePlaybackPositionChanged, colors = switchColors())
                 }
             }
+        item {
+            SettingRow(
+                "Videos locais",
+                if (localVideosEnabled) "Arquivos de video entram na biblioteca" else "Biblioteca focada em audio",
+                Icons.Rounded.VideoLibrary,
+                onClick = { onLocalVideosChanged(!localVideosEnabled) }
+            ) {
+                Switch(localVideosEnabled, onLocalVideosChanged, colors = switchColors())
+            }
+        }
         item {
             SettingRow("Widget", "Adicione o widget pela tela inicial do Android", Icons.Rounded.Widgets)
         }
@@ -213,13 +229,9 @@ fun SettingsScreen(
         )
     }
     if (showEqualizerDialog) {
-        OptionDialog(
-            title = "Equalizador",
-            subtitle = "Preset aplicado quando o Android permite controlar o áudio local.",
-            options = EqualizerPreset.entries,
+        EqualizerDialog(
             selected = equalizerPreset,
-            label = { it.label },
-            description = { "Preset ${it.label}" },
+            customGains = customEqualizerGains,
             onDismiss = { showEqualizerDialog = false },
             onConfirm = onEqualizerSelected
         )
@@ -337,6 +349,107 @@ private fun <T> OptionDialog(
                 Spacer(Modifier.size(16.dp))
                 DialogActions(onDismiss) {
                     onConfirm(localSelection)
+                    onDismiss()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EqualizerDialog(
+    selected: EqualizerPreset,
+    customGains: List<Short>,
+    onDismiss: () -> Unit,
+    onConfirm: (EqualizerPreset, List<Short>) -> Unit
+) {
+    var localSelection by remember(selected) { mutableStateOf(selected) }
+    var localBands by remember(customGains) { mutableStateOf(customGains) }
+    val safeBands = if (localBands.size == EqualizerPreset.Custom.bandGains.size) {
+        localBands
+    } else {
+        EqualizerPreset.Custom.bandGains
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(Modifier.fillMaxWidth(), color = WaveSurface, shape = RoundedCornerShape(28.dp), tonalElevation = 0.dp) {
+            Column(Modifier.padding(18.dp)) {
+                DialogHeader("Equalizador", "Escolha um preset ou ajuste as bandas do modo personalizado.", onDismiss)
+                Spacer(Modifier.size(12.dp))
+                EqualizerPreset.entries.forEach { option ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { localSelection = option },
+                        color = if (option == localSelection) WavePurple.copy(alpha = 0.22f) else WaveSurfaceBright.copy(alpha = 0.36f),
+                        shape = RoundedCornerShape(18.dp),
+                        tonalElevation = 0.dp
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = option == localSelection,
+                                onClick = { localSelection = option },
+                                colors = RadioButtonDefaults.colors(selectedColor = WavePink, unselectedColor = WaveTextSecondary)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(option.label, color = WaveTextPrimary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (option == EqualizerPreset.Custom) "Ajuste manual salvo no aparelho." else "Preset ${option.label}",
+                                    color = WaveTextSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.size(8.dp))
+                }
+                if (localSelection == EqualizerPreset.Custom) {
+                    Surface(
+                        color = WaveBlue.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(18.dp),
+                        tonalElevation = 0.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Grave", "Medio grave", "Medio", "Presenca", "Agudo").forEachIndexed { index, label ->
+                                val value = safeBands.getOrElse(index) { 0 }.toFloat()
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = label,
+                                        color = WaveTextSecondary,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = value.toInt().toString(),
+                                        color = WaveTextPrimary,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                                Slider(
+                                    value = value,
+                                    onValueChange = { newValue ->
+                                        localBands = safeBands.toMutableList().also {
+                                            it[index] = newValue.toInt().toShort()
+                                        }
+                                    },
+                                    valueRange = -1200f..1200f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = WavePink,
+                                        activeTrackColor = WavePink,
+                                        inactiveTrackColor = WaveSurfaceBright
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.size(12.dp))
+                }
+                DialogActions(onDismiss) {
+                    onConfirm(localSelection, safeBands)
                     onDismiss()
                 }
             }

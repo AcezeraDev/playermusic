@@ -17,6 +17,7 @@ fun MusicListItem(
     modifier: Modifier = Modifier,
     isQueued: Boolean = false,
     onAddToQueue: (Music) -> Unit = {},
+    onPlayNext: (Music) -> Unit = {},
     onRemoveFromQueue: (Music) -> Unit = {},
     onRemoveFromPlaylist: ((Music) -> Unit)? = null
 ) {
@@ -30,6 +31,7 @@ fun MusicListItem(
         onAddToPlaylist = onAddToPlaylist,
         isQueued = isQueued,
         onAddToQueue = onAddToQueue,
+        onPlayNext = onPlayNext,
         onRemoveFromQueue = onRemoveFromQueue,
         onRemoveFromPlaylist = onRemoveFromPlaylist,
         modifier = modifier

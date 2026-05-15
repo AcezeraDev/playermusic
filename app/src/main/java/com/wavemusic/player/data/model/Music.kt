@@ -29,7 +29,22 @@ data class Music(
 
     val mediaTypeLabel: String
         get() = if (isVideo) "Video" else "Musica"
+
+    fun withTagOverride(override: LocalTagOverride?): Music {
+        if (override == null) return this
+        return copy(
+            title = override.title.ifBlank { title },
+            artist = override.artist.ifBlank { artist },
+            album = override.album.ifBlank { album }
+        )
+    }
 }
+
+data class LocalTagOverride(
+    val title: String,
+    val artist: String,
+    val album: String
+)
 
 fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000).coerceAtLeast(0)

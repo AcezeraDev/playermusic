@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
@@ -77,11 +79,13 @@ fun SearchScreen(
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(SearchFilter.All) }
+    var sort by rememberSaveable { mutableStateOf(SearchSort.Recent) }
     var detail by remember { mutableStateOf<SearchDetail?>(null) }
     val normalizedQuery = query.trim()
 
@@ -129,7 +133,7 @@ fun SearchScreen(
         }
     }
 
-    val songResults by remember(songs, normalizedQuery) {
+    val songResults by remember(songs, normalizedQuery, sort) {
         derivedStateOf {
             songs
                 .filterNot { it.isVideo }
@@ -139,11 +143,11 @@ fun SearchScreen(
                         it.artist.contains(normalizedQuery, ignoreCase = true) ||
                         it.album.contains(normalizedQuery, ignoreCase = true)
                 }
-                .sortedByDescending { it.dateAddedSeconds }
+                .sortedFor(sort)
         }
     }
 
-    val videoResults by remember(songs, normalizedQuery) {
+    val videoResults by remember(songs, normalizedQuery, sort) {
         derivedStateOf {
             songs
                 .filter { it.isVideo }
@@ -154,7 +158,40 @@ fun SearchScreen(
                         it.album.contains(normalizedQuery, ignoreCase = true) ||
                         it.folder.contains(normalizedQuery, ignoreCase = true)
                 }
-                .sortedByDescending { it.dateAddedSeconds }
+                .sortedFor(sort)
+        }
+    }
+
+    val favoriteResults by remember(songs, normalizedQuery, likedIds, sort) {
+        derivedStateOf {
+            songs
+                .filter { it.id in likedIds }
+                .filter {
+                    normalizedQuery.isBlank() ||
+                        it.title.contains(normalizedQuery, ignoreCase = true) ||
+                        it.artist.contains(normalizedQuery, ignoreCase = true) ||
+                        it.album.contains(normalizedQuery, ignoreCase = true) ||
+                        it.folder.contains(normalizedQuery, ignoreCase = true)
+                }
+                .sortedFor(sort)
+        }
+    }
+
+    val folderResults by remember(songs, normalizedQuery) {
+        derivedStateOf {
+            songs
+                .groupBy { it.folder.normalizedKey() }
+                .values
+                .mapNotNull { group ->
+                    val sorted = group.sortedByDescending { it.dateAddedSeconds }
+                    val first = sorted.firstOrNull() ?: return@mapNotNull null
+                    FolderResult(
+                        name = first.folder,
+                        songs = sorted
+                    )
+                }
+                .filter { normalizedQuery.isBlank() || it.name.contains(normalizedQuery, ignoreCase = true) }
+                .sortedBy { it.name.lowercase() }
         }
     }
 
@@ -165,6 +202,8 @@ fun SearchScreen(
             ?: songs.filter { "${it.album.normalizedKey()}|${it.artist.normalizedKey()}" == selectedDetail.key }
                 .filterNot { it.isVideo }
                 .sortedByDescending { it.dateAddedSeconds }
+        is SearchDetail.Folder -> folderResults.firstOrNull { it.name == selectedDetail.name }?.songs
+            ?: songs.filter { it.folder == selectedDetail.name }.sortedFor(sort)
         null -> emptyList()
     }
 
@@ -193,6 +232,24 @@ fun SearchScreen(
                             selectedContainerColor = WaveBlue.copy(alpha = 0.2f),
                             selectedLabelColor = WaveTextPrimary,
                             containerColor = WaveSurface.copy(alpha = 0.56f),
+                            labelColor = WaveTextSecondary
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(SearchSort.entries, key = { it.name }) { item ->
+                    FilterChip(
+                        selected = sort == item,
+                        onClick = { sort = item },
+                        label = { Text(item.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = WavePink.copy(alpha = 0.2f),
+                            selectedLabelColor = WaveTextPrimary,
+                            containerColor = WaveSurface.copy(alpha = 0.48f),
                             labelColor = WaveTextSecondary
                         )
                     )
@@ -257,6 +314,7 @@ fun SearchScreen(
                             onToggleLike = onToggleLike,
                             onAddToPlaylist = onAddToPlaylist,
                             onAddToQueue = onAddToQueue,
+                            onPlayNext = onPlayNext,
                             onRemoveFromQueue = onRemoveFromQueue
                         )
                     }
@@ -268,8 +326,10 @@ fun SearchScreen(
                 SearchFilter.All -> {
                     val hasResults = songResults.isNotEmpty() ||
                         videoResults.isNotEmpty() ||
+                        favoriteResults.isNotEmpty() ||
                         artistResults.isNotEmpty() ||
-                        albumResults.isNotEmpty()
+                        albumResults.isNotEmpty() ||
+                        folderResults.isNotEmpty()
                     if (!hasResults) {
                         item {
                             EmptyMusicScreen(
@@ -291,6 +351,7 @@ fun SearchScreen(
                                     onToggleLike = onToggleLike,
                                     onAddToPlaylist = onAddToPlaylist,
                                     onAddToQueue = onAddToQueue,
+                                    onPlayNext = onPlayNext,
                                     onRemoveFromQueue = onRemoveFromQueue
                                 )
                             }
@@ -308,6 +369,7 @@ fun SearchScreen(
                                     onToggleLike = onToggleLike,
                                     onAddToPlaylist = onAddToPlaylist,
                                     onAddToQueue = onAddToQueue,
+                                    onPlayNext = onPlayNext,
                                     onRemoveFromQueue = onRemoveFromQueue
                                 )
                             }
@@ -334,6 +396,19 @@ fun SearchScreen(
                                 )
                             }
                         }
+                        if (folderResults.isNotEmpty()) {
+                            item { SearchSectionTitle("Pastas", "${folderResults.size} resultado(s)") }
+                            items(folderResults, key = { "folder-${it.name.normalizedKey()}" }) { folder ->
+                                CollectionResultRow(
+                                    title = folder.name,
+                                    subtitle = "${folder.songs.size} item(ns)",
+                                    icon = Icons.Rounded.Folder,
+                                    music = folder.songs.firstOrNull(),
+                                    gradient = listOf(WaveBlue, WavePurple),
+                                    onClick = { detail = SearchDetail.Folder(folder.name) }
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -357,6 +432,7 @@ fun SearchScreen(
                                 onToggleLike = onToggleLike,
                                 onAddToPlaylist = onAddToPlaylist,
                                 onAddToQueue = onAddToQueue,
+                                onPlayNext = onPlayNext,
                                 onRemoveFromQueue = onRemoveFromQueue
                             )
                         }
@@ -383,6 +459,34 @@ fun SearchScreen(
                                 onToggleLike = onToggleLike,
                                 onAddToPlaylist = onAddToPlaylist,
                                 onAddToQueue = onAddToQueue,
+                                onPlayNext = onPlayNext,
+                                onRemoveFromQueue = onRemoveFromQueue
+                            )
+                        }
+                    }
+                }
+
+                SearchFilter.Favorite -> {
+                    if (favoriteResults.isEmpty()) {
+                        item {
+                            EmptyMusicScreen(
+                                title = "Nenhuma curtida encontrada",
+                                message = "Tente buscar outra faixa curtida."
+                            )
+                        }
+                    } else {
+                        items(favoriteResults, key = { it.id }) { music ->
+                            SearchMusicCard(
+                                music = music,
+                                currentMusicId = currentMusicId,
+                                likedIds = likedIds,
+                                playlists = playlists,
+                                queuedIds = queuedIds,
+                                onSongClick = onSongClick,
+                                onToggleLike = onToggleLike,
+                                onAddToPlaylist = onAddToPlaylist,
+                                onAddToQueue = onAddToQueue,
+                                onPlayNext = onPlayNext,
                                 onRemoveFromQueue = onRemoveFromQueue
                             )
                         }
@@ -424,6 +528,28 @@ fun SearchScreen(
                             AlbumResultRow(
                                 album = album,
                                 onClick = { detail = SearchDetail.Album(album.key, album.name, album.artist) }
+                            )
+                        }
+                    }
+                }
+
+                SearchFilter.Folder -> {
+                    if (folderResults.isEmpty()) {
+                        item {
+                            EmptyMusicScreen(
+                                title = "Nenhuma pasta encontrada",
+                                message = "Tente buscar por outro nome de pasta."
+                            )
+                        }
+                    } else {
+                        items(folderResults, key = { it.name.normalizedKey() }) { folder ->
+                            CollectionResultRow(
+                                title = folder.name,
+                                subtitle = "${folder.songs.size} item(ns)",
+                                icon = Icons.Rounded.Folder,
+                                music = folder.songs.firstOrNull(),
+                                gradient = listOf(WaveBlue, WavePurple),
+                                onClick = { detail = SearchDetail.Folder(folder.name) }
                             )
                         }
                     }
@@ -472,6 +598,7 @@ private fun SearchMusicCard(
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit
 ) {
     MusicListItem(
@@ -484,6 +611,7 @@ private fun SearchMusicCard(
         onAddToPlaylist = onAddToPlaylist,
         isQueued = music.id in queuedIds,
         onAddToQueue = onAddToQueue,
+        onPlayNext = onPlayNext,
         onRemoveFromQueue = onRemoveFromQueue
     )
 }
@@ -493,8 +621,10 @@ private fun SearchSectionTitle(title: String, subtitle: String) {
     val icon = when (title) {
         "Músicas" -> Icons.Rounded.MusicNote
         "Videos" -> Icons.Rounded.LibraryMusic
+        "Curtidas" -> Icons.Rounded.Favorite
         "Artistas" -> Icons.Rounded.Person
         "Álbuns" -> Icons.Rounded.Album
+        "Pastas" -> Icons.Rounded.Folder
         else -> Icons.Rounded.Search
     }
     SectionTitle(title = title, subtitle = subtitle, accent = WaveBlue, icon = icon)
@@ -602,20 +732,28 @@ private data class AlbumResult(
     val songs: List<Music>
 )
 
+private data class FolderResult(
+    val name: String,
+    val songs: List<Music>
+)
+
 private sealed class SearchDetail {
     data class Artist(val name: String) : SearchDetail()
     data class Album(val key: String, val name: String, val artist: String) : SearchDetail()
+    data class Folder(val name: String) : SearchDetail()
 
     val title: String
         get() = when (this) {
             is Artist -> name
             is Album -> name
+            is Folder -> name
         }
 
     val subtitle: String
         get() = when (this) {
             is Artist -> "Músicas deste artista"
             is Album -> "$artist • músicas deste álbum"
+            is Folder -> "Itens desta pasta"
         }
 }
 
@@ -623,11 +761,29 @@ private enum class SearchFilter(val label: String) {
     All("Tudo"),
     Song("Música"),
     Video("Videos"),
+    Favorite("Curtidas"),
     Artist("Artista"),
-    Album("Álbum")
+    Album("Álbum"),
+    Folder("Pasta")
+}
+
+private enum class SearchSort(val label: String) {
+    Recent("Recentes"),
+    Title("Titulo"),
+    Artist("Artista"),
+    Duration("Duracao")
 }
 
 private fun String.normalizedKey(): String {
     return trim().lowercase().ifBlank { "desconhecido" }
+}
+
+private fun List<Music>.sortedFor(sort: SearchSort): List<Music> {
+    return when (sort) {
+        SearchSort.Recent -> sortedByDescending { it.dateAddedSeconds }
+        SearchSort.Title -> sortedBy { it.title.lowercase() }
+        SearchSort.Artist -> sortedWith(compareBy<Music> { it.artist.lowercase() }.thenBy { it.title.lowercase() })
+        SearchSort.Duration -> sortedByDescending { it.durationMs }
+    }
 }
 

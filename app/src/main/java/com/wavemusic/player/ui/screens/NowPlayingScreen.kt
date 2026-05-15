@@ -8,6 +8,8 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -22,6 +24,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
@@ -49,6 +52,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Fullscreen
@@ -77,6 +81,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,7 +110,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wavemusic.player.data.model.Music
 import com.wavemusic.player.data.model.Playlist
+import com.wavemusic.player.data.model.activeLyricsIndex
 import com.wavemusic.player.data.model.formatDuration
+import com.wavemusic.player.data.model.parseLyrics
 import com.wavemusic.player.ui.components.AlbumArtwork
 import com.wavemusic.player.ui.components.AnimatedIconButton
 import com.wavemusic.player.ui.components.GlassCard
@@ -127,6 +135,7 @@ fun NowPlayingScreen(
     isLiked: Boolean,
     playlists: List<Playlist>,
     queueSongs: List<Music>,
+    lyricsText: String,
     positionMs: Long,
     durationMs: Long,
     videoAspectRatio: Float = 16f / 9f,
@@ -142,9 +151,13 @@ fun NowPlayingScreen(
     onToggleLike: (Music) -> Unit,
     onAddToPlaylist: (Music, Playlist) -> Unit,
     onAddToQueue: (Music) -> Unit,
+    onPlayNext: (Music) -> Unit,
     onRemoveFromQueue: (Music) -> Unit,
     onMoveQueueItem: (Int, Int) -> Unit,
     onClearQueue: () -> Unit,
+    onSaveQueueAsPlaylist: (String) -> Unit,
+    onSaveLyrics: (Music, String) -> Unit,
+    onSaveMetadata: (Music, String, String, String) -> Unit,
     onVideoSurfaceReady: (SurfaceHolder?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -152,6 +165,7 @@ fun NowPlayingScreen(
     var playlistMenuExpanded by remember { mutableStateOf(false) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var showMetadataEditor by rememberSaveable { mutableStateOf(false) }
     var showFullscreenVideo by rememberSaveable(music.id) { mutableStateOf(false) }
     var dragAmount by remember { mutableFloatStateOf(0f) }
 
@@ -256,7 +270,10 @@ fun NowPlayingScreen(
                 .padding(horizontal = 22.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            TopBar(onBack = onBack)
+            TopBar(
+                onBack = onBack,
+                onEdit = { showMetadataEditor = true }
+            )
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -529,7 +546,8 @@ fun NowPlayingScreen(
             onAddCurrent = { onAddToQueue(music) },
             onRemove = onRemoveFromQueue,
             onMove = onMoveQueueItem,
-            onClear = onClearQueue
+            onClear = onClearQueue,
+            onSaveAsPlaylist = onSaveQueueAsPlaylist
         )
     }
 
@@ -550,7 +568,21 @@ fun NowPlayingScreen(
     if (showLyrics) {
         LyricsDialog(
             music = music,
+            lyricsText = lyricsText,
+            positionMs = positionMs,
+            onSaveLyrics = { onSaveLyrics(music, it) },
             onDismiss = { showLyrics = false }
+        )
+    }
+
+    if (showMetadataEditor) {
+        MetadataEditorDialog(
+            music = music,
+            onDismiss = { showMetadataEditor = false },
+            onSave = { title, artist, album ->
+                onSaveMetadata(music, title, artist, album)
+                showMetadataEditor = false
+            }
         )
     }
 }
@@ -659,7 +691,10 @@ private fun FullscreenVideoDialog(
 }
 
 @Composable
-private fun TopBar(onBack: () -> Unit) {
+private fun TopBar(
+    onBack: () -> Unit,
+    onEdit: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -675,7 +710,9 @@ private fun TopBar(onBack: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f)
         )
-        Spacer(modifier = Modifier.size(48.dp))
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Rounded.Edit, "Editar informacoes", tint = WaveTextPrimary)
+        }
     }
 }
 
@@ -802,8 +839,10 @@ private fun QueueDialog(
     onAddCurrent: () -> Unit,
     onRemove: (Music) -> Unit,
     onMove: (Int, Int) -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onSaveAsPlaylist: (String) -> Unit
 ) {
+    var playlistName by rememberSaveable { mutableStateOf("Fila salva") }
     Dialog(onDismissRequest = onDismiss) {
         NeonCard(
             modifier = Modifier.fillMaxWidth(),
@@ -839,7 +878,27 @@ private fun QueueDialog(
                         }
                     }
                     Spacer(modifier = Modifier.size(12.dp))
+                    OutlinedTextField(
+                        value = playlistName,
+                        onValueChange = { playlistName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Nome da playlist") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = WaveTextPrimary,
+                            unfocusedTextColor = WaveTextPrimary,
+                            focusedBorderColor = WaveBlue,
+                            unfocusedBorderColor = WaveSurfaceBright,
+                            focusedContainerColor = WaveSurface.copy(alpha = 0.48f),
+                            unfocusedContainerColor = WaveSurface.copy(alpha = 0.36f),
+                            cursorColor = WaveBlue
+                        )
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
                     Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = { onSaveAsPlaylist(playlistName) }) {
+                            Text("Salvar como playlist", color = WaveBlue)
+                        }
                         TextButton(onClick = onClear) {
                             Text("Limpar fila", color = WavePink)
                         }
@@ -858,7 +917,21 @@ private fun QueueRow(
     onMove: (Int, Int) -> Unit,
     onRemove: (Music) -> Unit
 ) {
+    var dragOffset by remember { mutableFloatStateOf(0f) }
     GlassCard(
+        modifier = Modifier.pointerInput(index, count) {
+            detectVerticalDragGestures(
+                onDragStart = { dragOffset = 0f },
+                onVerticalDrag = { _, amount -> dragOffset += amount },
+                onDragEnd = {
+                    when {
+                        dragOffset < -44f -> onMove(index, index - 1)
+                        dragOffset > 44f -> onMove(index, index + 1)
+                    }
+                    dragOffset = 0f
+                }
+            )
+        },
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(10.dp)
     ) {
@@ -887,8 +960,36 @@ private fun QueueRow(
 @Composable
 private fun LyricsDialog(
     music: Music,
+    lyricsText: String,
+    positionMs: Long,
+    onSaveLyrics: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var editing by rememberSaveable(music.id) { mutableStateOf(lyricsText.isBlank()) }
+    var draft by remember(music.id, lyricsText) { mutableStateOf(lyricsText) }
+    val lines = remember(draft) { parseLyrics(draft) }
+    val activeIndex = activeLyricsIndex(lines, positionMs)
+    val importLyricsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            }.onSuccess { text ->
+                if (text.isNotBlank()) {
+                    draft = text
+                    editing = true
+                    Toast.makeText(context, "Letra importada.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Arquivo de letra vazio.", Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                Toast.makeText(context, "Nao foi possivel importar a letra.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
     Dialog(onDismissRequest = onDismiss) {
         NeonCard(
             modifier = Modifier.fillMaxWidth(),
@@ -908,25 +1009,178 @@ private fun LyricsDialog(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "Sem letra local encontrada.",
-                            color = WaveTextPrimary,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "O Wave Music já tem a tela de letras preparada. Quando você adicionar letras locais no futuro, esta área pode fazer scroll automático junto com a reprodução.",
-                            color = WaveTextSecondary,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        listOf("♪ ${music.title}", "♪ ${music.artist}", "♪ Letra sincronizada pronta para receber conteúdo").forEach {
-                            Text(it, color = WaveTextSecondary)
+                        if (editing) {
+                            Text(
+                                text = "Cole uma letra comum ou .lrc com tempos como [01:23.45].",
+                                color = WaveTextSecondary,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            TextButton(onClick = { importLyricsLauncher.launch(arrayOf("text/*", "application/octet-stream")) }) {
+                                Text("Importar .lrc/.txt", color = WaveBlue)
+                            }
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = { draft = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 220.dp, max = 360.dp),
+                                placeholder = { Text("Letra local") },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = WaveTextPrimary,
+                                    unfocusedTextColor = WaveTextPrimary,
+                                    focusedBorderColor = WavePink,
+                                    unfocusedBorderColor = WaveSurfaceBright,
+                                    focusedContainerColor = WaveSurface.copy(alpha = 0.48f),
+                                    unfocusedContainerColor = WaveSurface.copy(alpha = 0.36f),
+                                    cursorColor = WavePink
+                                )
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { editing = false }) {
+                                    Text("Cancelar", color = WaveTextSecondary)
+                                }
+                                Button(
+                                    onClick = {
+                                        onSaveLyrics(draft)
+                                        editing = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = WavePink),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text("Salvar")
+                                }
+                            }
+                        } else if (lines.isEmpty()) {
+                            Text(
+                                text = "Sem letra local encontrada.",
+                                color = WaveTextPrimary,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Cole uma letra para salvar no aparelho.",
+                                color = WaveTextSecondary,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Button(
+                                onClick = { editing = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = WavePurple),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text("Adicionar letra")
+                            }
+                            TextButton(onClick = { importLyricsLauncher.launch(arrayOf("text/*", "application/octet-stream")) }) {
+                                Text("Importar .lrc/.txt", color = WaveBlue)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 360.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(lines, key = { index, item -> "${item.timeMs}-$index-${item.text}" }) { index, line ->
+                                    val active = index == activeIndex
+                                    Text(
+                                        text = line.text,
+                                        color = if (active) WaveTextPrimary else WaveTextSecondary,
+                                        style = if (active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (active) FontWeight.Black else FontWeight.Normal,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (active) WavePink.copy(alpha = 0.18f) else Color.Transparent)
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { importLyricsLauncher.launch(arrayOf("text/*", "application/octet-stream")) }) {
+                                    Text("Importar", color = WaveTextSecondary)
+                                }
+                                TextButton(onClick = { editing = true }) {
+                                    Text("Editar letra", color = WaveBlue)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun MetadataEditorDialog(
+    music: Music,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Unit
+) {
+    var title by rememberSaveable(music.id) { mutableStateOf(music.title) }
+    var artist by rememberSaveable(music.id) { mutableStateOf(music.artist) }
+    var album by rememberSaveable(music.id) { mutableStateOf(music.album) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        NeonCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = listOf(WaveBlue, WavePurple),
+            contentPadding = PaddingValues(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DialogHeader("Editar informacoes", "Mudanca local dentro do Wave Music.", onDismiss)
+                MetadataField("Titulo", title, onValueChange = { title = it })
+                MetadataField("Artista", artist, onValueChange = { artist = it })
+                MetadataField("Album", album, onValueChange = { album = it })
+                Text(
+                    text = "O arquivo original nao e regravado. Isso evita pedir permissao especial de escrita no Android.",
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(WaveSurfaceBright.copy(alpha = 0.28f))
+                        .padding(12.dp)
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancelar", color = WaveTextSecondary)
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    Button(
+                        onClick = { onSave(title, artist, album) },
+                        colors = ButtonDefaults.buttonColors(containerColor = WavePink),
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Text("Salvar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetadataField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = WaveTextPrimary,
+            unfocusedTextColor = WaveTextPrimary,
+            focusedBorderColor = WaveBlue,
+            unfocusedBorderColor = WaveSurfaceBright,
+            focusedContainerColor = WaveSurface.copy(alpha = 0.48f),
+            unfocusedContainerColor = WaveSurface.copy(alpha = 0.36f),
+            cursorColor = WaveBlue,
+            focusedLabelColor = WaveBlue,
+            unfocusedLabelColor = WaveTextSecondary
+        )
+    )
 }
 
 @Composable

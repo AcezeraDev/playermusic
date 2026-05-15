@@ -7,8 +7,9 @@ import android.provider.MediaStore
 import com.wavemusic.player.data.model.Music
 
 object MusicStore {
-    fun loadDeviceSongs(context: Context): List<Music> {
-        return (loadAudio(context) + loadVideos(context))
+    fun loadDeviceSongs(context: Context, includeVideos: Boolean = false): List<Music> {
+        val videos = if (includeVideos) loadVideos(context) else emptyList()
+        return (loadAudio(context) + videos)
             .sortedWith(
                 compareByDescending<Music> { it.dateAddedSeconds }
                     .thenByDescending { it.id }
@@ -36,13 +37,15 @@ object MusicStore {
         }
 
         val songs = mutableListOf<Music>()
-        context.contentResolver.query(
+        runCatching {
+            context.contentResolver.query(
             collection,
             projection.toTypedArray(),
             "${MediaStore.Audio.Media.IS_MUSIC} != 0",
             null,
             "${MediaStore.Audio.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
+            )
+        }.getOrNull()?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -97,13 +100,15 @@ object MusicStore {
         }
 
         val videos = mutableListOf<Music>()
-        context.contentResolver.query(
+        runCatching {
+            context.contentResolver.query(
             collection,
             projection.toTypedArray(),
             null,
             null,
             "${MediaStore.Video.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
+            )
+        }.getOrNull()?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.TITLE)
             val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
