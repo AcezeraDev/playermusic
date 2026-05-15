@@ -14,6 +14,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -266,21 +267,14 @@ fun LibraryScreen(
             when (currentPage) {
                 "root" -> {
                     item {
-                        LibraryOverviewPanel(
+                        LibraryConstellationPanel(
+                            sections = sections,
                             songsCount = songs.size,
                             playlistCount = playlists.size,
                             likedCount = likedIds.size,
-                            recentCount = recentIds.size
+                            recentCount = recentIds.size,
+                            onSectionClick = { page = it.target }
                         )
-                    }
-
-                    items(sections, key = { it.target }) { section ->
-                        EnteringItem {
-                            LibrarySectionCard(
-                                section = section,
-                                onClick = { page = section.target }
-                            )
-                        }
                     }
                 }
 
@@ -723,6 +717,207 @@ private fun EnteringItem(content: @Composable () -> Unit) {
 }
 
 @Composable
+private fun LibraryConstellationPanel(
+    sections: List<LibrarySection>,
+    songsCount: Int,
+    playlistCount: Int,
+    likedCount: Int,
+    recentCount: Int,
+    onSectionClick: (LibrarySection) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            WaveSurfaceBright.copy(alpha = 0.44f),
+                            WavePurple.copy(alpha = 0.10f),
+                            WaveSurface.copy(alpha = 0.82f)
+                        )
+                    )
+                )
+                .border(1.dp, WaveBlue.copy(alpha = 0.16f), RoundedCornerShape(32.dp))
+                .padding(18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(WaveSurfaceBright.copy(alpha = 0.36f))
+                        .border(1.dp, WaveBlue.copy(alpha = 0.22f), RoundedCornerShape(30.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = songsCount.toString(),
+                            color = WaveTextPrimary,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "itens",
+                            color = WaveTextSecondary,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Biblioteca",
+                        color = WaveTextPrimary,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Um mapa compacto para navegar por tudo sem poluir a tela.",
+                        color = WaveTextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CleanMetricChip(value = playlistCount.toString(), label = "playlists", modifier = Modifier.weight(1f))
+            CleanMetricChip(value = likedCount.toString(), label = "curtidas", modifier = Modifier.weight(1f))
+            CleanMetricChip(value = recentCount.toString(), label = "recentes", modifier = Modifier.weight(1f))
+        }
+
+        sections.forEachIndexed { index, section ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (index % 2 == 1) {
+                    Spacer(modifier = Modifier.weight(0.16f))
+                }
+                LibraryPortal(
+                    section = section,
+                    index = index + 1,
+                    compact = index % 3 != 0,
+                    onClick = { onSectionClick(section) },
+                    modifier = Modifier.weight(1f)
+                )
+                if (index % 2 == 0) {
+                    Spacer(modifier = Modifier.weight(0.16f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CleanMetricChip(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(WaveSurfaceBright.copy(alpha = 0.26f))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, color = WaveTextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        Text(label, color = WaveTextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun LibraryPortal(
+    section: LibrarySection,
+    index: Int,
+    compact: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        modifier = modifier
+            .height(if (compact) 88.dp else 106.dp)
+            .clip(shape)
+            .background(WaveSurfaceBright.copy(alpha = 0.24f))
+            .border(1.dp, section.colors.last().copy(alpha = 0.16f), shape)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            section.colors.first().copy(alpha = 0.18f),
+                            WaveSurface.copy(alpha = 0.74f)
+                        )
+                    )
+                )
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(if (compact) 42.dp else 48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(section.colors.first().copy(alpha = 0.20f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = index.toString().padStart(2, '0'),
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = section.title,
+                    color = WaveTextPrimary,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = section.subtitle,
+                    color = WaveTextSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = section.icon,
+                contentDescription = null,
+                tint = section.colors.last().copy(alpha = 0.72f),
+                modifier = Modifier.size(if (compact) 25.dp else 30.dp)
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = WaveTextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun LibraryOverviewPanel(
     songsCount: Int,
     playlistCount: Int,
@@ -912,25 +1107,6 @@ private fun LibraryHeader(
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(100.dp))
-                    .background(WaveSurfaceBright.copy(alpha = 0.54f))
-                    .border(
-                        width = 1.dp,
-                        color = WaveBlue.copy(alpha = 0.22f),
-                        shape = RoundedCornerShape(100.dp)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "NEON",
-                    color = WaveBlue,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black
                 )
             }
         }

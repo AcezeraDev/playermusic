@@ -43,7 +43,14 @@ object WaveMusicForegroundState {
 
     @Synchronized
     fun clear() {
-        snapshot = snapshot.copy(isPlaying = false, sessionToken = null)
+        snapshot = WaveMusicForegroundSnapshot(
+            music = null,
+            isPlaying = false,
+            isLiked = false,
+            positionMs = 0L,
+            durationMs = 0L,
+            sessionToken = null
+        )
     }
 
     @Synchronized

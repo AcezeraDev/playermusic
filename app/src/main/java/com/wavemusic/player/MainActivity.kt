@@ -203,13 +203,16 @@ private fun WaveMusicApp() {
     )
 
     val initialPlayback = remember { WaveMusicForegroundState.snapshot() }
+    val initialMusic = remember(initialPlayback) {
+        initialPlayback.music.takeIf { initialPlayback.isPlaying }
+    }
     var songs by remember { mutableStateOf<List<Music>>(emptyList()) }
     var selectedTab by rememberSaveable { mutableStateOf(WaveTab.Home) }
-    var currentMusic by remember { mutableStateOf<Music?>(initialPlayback.music) }
-    var isPlaying by rememberSaveable { mutableStateOf(initialPlayback.isPlaying) }
+    var currentMusic by remember { mutableStateOf<Music?>(initialMusic) }
+    var isPlaying by rememberSaveable { mutableStateOf(initialMusic != null && initialPlayback.isPlaying) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
-    var positionMs by remember { mutableLongStateOf(initialPlayback.positionMs) }
-    var durationMs by remember { mutableLongStateOf(initialPlayback.durationMs) }
+    var positionMs by remember { mutableLongStateOf(if (initialMusic != null) initialPlayback.positionMs else 0L) }
+    var durationMs by remember { mutableLongStateOf(if (initialMusic != null) initialPlayback.durationMs else 0L) }
     var isLoadingSongs by remember { mutableStateOf(false) }
     var likedIds by remember { mutableStateOf(libraryStorage.loadLikedIds()) }
     var playlists by remember { mutableStateOf(libraryStorage.loadPlaylists()) }
@@ -519,12 +522,7 @@ private fun WaveMusicApp() {
             val tagOverrides = libraryStorage.loadTagOverrides()
             val displaySongs = loadedSongs.map { music -> music.withTagOverride(tagOverrides[music.id]) }
             songs = displaySongs
-            if (continueListeningEnabled) {
-                val recentMusic = recentIds.firstNotNullOfOrNull { id -> displaySongs.firstOrNull { it.id == id } }
-                if (currentMusic == null) currentMusic = recentMusic ?: displaySongs.firstOrNull()
-            } else if (currentMusic == null || displaySongs.none { it.id == currentMusic?.id }) {
-                currentMusic = displaySongs.firstOrNull()
-            } else {
+            if (currentMusic != null) {
                 currentMusic = displaySongs.firstOrNull { it.id == currentMusic?.id } ?: currentMusic
             }
             isLoadingSongs = false
@@ -728,11 +726,17 @@ private fun WaveMusicApp() {
     }
 
     fun closeMediaNotification() {
-        runCatching {
-            if (isPlayerCurrentlyPlaying()) player.pause()
-        }
         saveCurrentPlaybackMemory()
+        runCatching {
+            player.stop()
+            player.clearMediaItems()
+            player.clearVideoSurface()
+        }
+        currentMusic = null
         isPlaying = false
+        positionMs = 0L
+        durationMs = 0L
+        showNowPlaying = false
         mediaNotificationDismissed = true
         mediaSession.isActive = false
         notificationController.cancel()
@@ -1148,14 +1152,17 @@ private fun WaveMusicApp() {
                     containerColor = Color.Transparent,
                     bottomBar = {
                         Column {
-                            MiniPlayer(
-                                music = selectedMusic,
-                                isPlaying = isPlaying,
-                                progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f,
-                                onPlayPause = ::togglePlayPause,
-                                onNext = ::playNext,
-                                onClick = { showNowPlaying = true }
-                            )
+                            if (selectedMusic != null) {
+                                MiniPlayer(
+                                    music = selectedMusic,
+                                    isPlaying = isPlaying,
+                                    progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f,
+                                    onPlayPause = ::togglePlayPause,
+                                    onNext = ::playNext,
+                                    onClose = ::closeMediaNotification,
+                                    onClick = { showNowPlaying = true }
+                                )
+                            }
                             BottomNavigationBar(
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
@@ -53,6 +54,7 @@ fun MiniPlayer(
     progress: Float,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
+    onClose: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -162,6 +164,21 @@ fun MiniPlayer(
                         imageVector = Icons.Rounded.SkipNext,
                         contentDescription = "Proxima musica",
                         tint = WaveBlue
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                AnimatedIconButton(
+                    onClick = onClose,
+                    enabled = music != null,
+                    modifier = Modifier.size(38.dp),
+                    background = Brush.linearGradient(listOf(WaveSurface, WavePurple.copy(alpha = 0.72f)))
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Fechar player",
+                        tint = WaveTextSecondary
                     )
                 }
             }

@@ -80,7 +80,7 @@ fun NeonCard(
         enabled = enabled,
         onClick = onClick,
         shape = shape,
-        color = WaveSurface.copy(alpha = 0.78f),
+        color = WaveSurface.copy(alpha = 0.86f),
         contentPadding = PaddingValues(0.dp),
         pressedScale = 0.985f
     ) {
@@ -90,15 +90,15 @@ fun NeonCard(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            colors.firstOrNull()?.copy(alpha = 0.22f) ?: WavePurple.copy(alpha = 0.22f),
+                            colors.firstOrNull()?.copy(alpha = 0.10f) ?: WavePurple.copy(alpha = 0.10f),
                             WaveSurface.copy(alpha = 0.96f),
-                            colors.lastOrNull()?.copy(alpha = 0.14f) ?: WaveBlue.copy(alpha = 0.14f)
+                            colors.lastOrNull()?.copy(alpha = 0.07f) ?: WaveBlue.copy(alpha = 0.07f)
                         )
                     )
                 )
                 .border(
                     width = 1.dp,
-                    color = (colors.lastOrNull() ?: WaveBlue).copy(alpha = 0.22f),
+                    color = (colors.lastOrNull() ?: WaveBlue).copy(alpha = 0.14f),
                     shape = shape
                 )
                 .padding(contentPadding),
@@ -119,7 +119,7 @@ fun GlassCard(
         modifier = modifier,
         onClick = onClick,
         shape = shape,
-        color = WaveSurface.copy(alpha = 0.62f),
+        color = WaveSurface.copy(alpha = 0.74f),
         contentPadding = PaddingValues(0.dp),
         pressedScale = 0.985f
     ) {
@@ -129,8 +129,8 @@ fun GlassCard(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            WaveSurfaceBright.copy(alpha = 0.42f),
-                            WaveSurface.copy(alpha = 0.72f)
+                            WaveSurfaceBright.copy(alpha = 0.22f),
+                            WaveSurface.copy(alpha = 0.84f)
                         )
                     )
                 )
@@ -407,15 +407,6 @@ fun EmptyState(
                     active = true
                 )
             }
-            NeonVisualizer(
-                isPlaying = true,
-                seed = title.hashCode().toLong(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .padding(horizontal = 42.dp, vertical = 4.dp),
-                bars = 18
-            )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = title,

@@ -277,15 +277,7 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Box(contentAlignment = Alignment.Center) {
-                NeonVisualizer(
-                    isPlaying = isPlaying,
-                    seed = music.id,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(96.dp)
-                        .alpha(0.72f)
-                )
+        Box(contentAlignment = Alignment.Center) {
                 if (music.isVideo) {
                     Box(
                         modifier = Modifier
@@ -358,17 +350,8 @@ fun NowPlayingScreen(
                     )
                 }
             }
-            MusicIconCluster(
-                modifier = Modifier.padding(top = 10.dp),
-                icons = listOf(
-                    Icons.Rounded.MusicNote,
-                    Icons.Rounded.GraphicEq,
-                    Icons.AutoMirrored.Rounded.QueueMusic
-                ),
-                colors = listOf(WavePink, WaveBlue, WavePurple)
-            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -376,15 +359,6 @@ fun NowPlayingScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Column {
-            NeonVisualizer(
-                isPlaying = isPlaying,
-                seed = music.id + 8,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp),
-                bars = 34
-            )
-
             Slider(
                 value = progress,
                 onValueChange = onSeek,
@@ -407,49 +381,16 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            NeonCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(34.dp),
-                colors = listOf(WavePurple, WavePink),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                ToggleIcon(
-                    selected = shuffleEnabled,
-                    icon = Icons.Rounded.Shuffle,
-                    contentDescription = "Aleatório",
-                    onClick = onToggleShuffle
-                )
-                AnimatedIconButton(onClick = onPrevious, modifier = Modifier.size(58.dp)) {
-                    Icon(Icons.Rounded.SkipPrevious, "Música anterior", tint = WaveTextPrimary, modifier = Modifier.size(36.dp))
-                }
-                AnimatedIconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.size(78.dp),
-                    background = Brush.linearGradient(listOf(WavePurple, WavePink))
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) "Pausar" else "Tocar",
-                        tint = WaveTextPrimary,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-                AnimatedIconButton(onClick = onNext, modifier = Modifier.size(58.dp)) {
-                    Icon(Icons.Rounded.SkipNext, "Próxima música", tint = WaveTextPrimary, modifier = Modifier.size(36.dp))
-                }
-                ToggleIcon(
-                    selected = repeatEnabled,
-                    icon = Icons.Rounded.Repeat,
-                    contentDescription = "Repetir",
-                    onClick = onToggleRepeat
-                )
-            }
-            }
+            CleanPlaybackControls(
+                isPlaying = isPlaying,
+                shuffleEnabled = shuffleEnabled,
+                repeatEnabled = repeatEnabled,
+                onToggleShuffle = onToggleShuffle,
+                onPrevious = onPrevious,
+                onPlayPause = onPlayPause,
+                onNext = onNext,
+                onToggleRepeat = onToggleRepeat
+            )
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -713,6 +654,114 @@ private fun TopBar(
         IconButton(onClick = onEdit) {
             Icon(Icons.Rounded.Edit, "Editar informacoes", tint = WaveTextPrimary)
         }
+    }
+}
+
+@Composable
+private fun CleanPlaybackControls(
+    isPlaying: Boolean,
+    shuffleEnabled: Boolean,
+    repeatEnabled: Boolean,
+    onToggleShuffle: () -> Unit,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onToggleRepeat: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = WaveSurface.copy(alpha = 0.92f),
+        shape = RoundedCornerShape(30.dp),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            CompactControlButton(
+                selected = shuffleEnabled,
+                icon = Icons.Rounded.Shuffle,
+                contentDescription = "Aleatorio",
+                onClick = onToggleShuffle
+            )
+            MainControlButton(
+                icon = Icons.Rounded.SkipPrevious,
+                contentDescription = "Musica anterior",
+                onClick = onPrevious
+            )
+            MainControlButton(
+                icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (isPlaying) "Pausar" else "Tocar",
+                onClick = onPlayPause,
+                primary = true
+            )
+            MainControlButton(
+                icon = Icons.Rounded.SkipNext,
+                contentDescription = "Proxima musica",
+                onClick = onNext
+            )
+            CompactControlButton(
+                selected = repeatEnabled,
+                icon = Icons.Rounded.Repeat,
+                contentDescription = "Repetir",
+                onClick = onToggleRepeat
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainControlButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    primary: Boolean = false
+) {
+    val size = if (primary) 72.dp else 54.dp
+    AnimatedIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(size),
+        background = if (primary) {
+            Brush.linearGradient(listOf(WavePink, WavePurple))
+        } else {
+            Brush.linearGradient(listOf(WaveSurfaceBright.copy(alpha = 0.92f), WaveSurfaceBright.copy(alpha = 0.58f)))
+        }
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = WaveTextPrimary,
+            modifier = Modifier.size(if (primary) 38.dp else 30.dp)
+        )
+    }
+}
+
+@Composable
+private fun CompactControlButton(
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    AnimatedIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(46.dp),
+        background = if (selected) {
+            Brush.linearGradient(listOf(WaveBlue, WavePurple))
+        } else {
+            Brush.linearGradient(listOf(WaveSurfaceBright.copy(alpha = 0.72f), WaveSurface.copy(alpha = 0.72f)))
+        }
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (selected) WaveTextPrimary else WaveTextSecondary,
+            modifier = Modifier.size(23.dp)
+        )
     }
 }
 

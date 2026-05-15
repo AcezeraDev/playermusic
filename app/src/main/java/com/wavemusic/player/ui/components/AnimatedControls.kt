@@ -28,6 +28,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 
+private val DefaultIconButtonBackground = Color(0xFF202848)
+private val DisabledIconButtonBackground = Color(0xFF12162A)
+
 @Composable
 fun AnimatedCard(
     modifier: Modifier = Modifier,
@@ -110,11 +113,8 @@ fun AnimatedIconButton(
         animationSpec = spring(dampingRatio = 0.62f, stiffness = 560f),
         label = "animated-icon-button-rotation"
     )
-    val decoratedModifier = if (background != null) {
-        Modifier.background(background)
-    } else {
-        Modifier
-    }
+    val decoratedModifier = background?.let { Modifier.background(it) }
+        ?: Modifier.background(if (enabled) DefaultIconButtonBackground else DisabledIconButtonBackground)
 
     Box(
         modifier = modifier
